@@ -17,15 +17,24 @@ const CompanyDashboard = () => {
       // Try to get dashboard data first
       try {
         const response = await getCompanyDashboard();
-        setDashboardData(response.data);
+        setDashboardData(response?.data || {
+          company: { companyName: 'Your Company' },
+          stats: { totalJobs: 0, activeJobs: 0, totalApplicants: 0, interviewReadyCandidates: 0 },
+          recentCandidates: []
+        });
+        
+        // Also fetch jobs separately for the jobs table
+        const jobsResponse = await getCompanyJobs();
+        setJobs(jobsResponse?.data?.jobs || []);
       } catch (dashboardError) {
         console.log('Dashboard endpoint not available, using fallback data');
         // If dashboard fails, get basic company data and jobs
         const jobsResponse = await getCompanyJobs();
-        setJobs(jobsResponse.data.jobs || []);
+        const jobsData = jobsResponse?.data?.jobs || [];
+        setJobs(jobsData);
         setDashboardData({
           company: { companyName: 'Your Company' },
-          stats: calculateStats(jobsResponse.data.jobs || []),
+          stats: calculateStats(jobsData),
           recentCandidates: []
         });
       }
@@ -37,6 +46,7 @@ const CompanyDashboard = () => {
         stats: { totalJobs: 0, activeJobs: 0, totalApplicants: 0, interviewReadyCandidates: 0 },
         recentCandidates: []
       });
+      setJobs([]);
     } finally {
       setLoading(false);
     }
@@ -44,9 +54,10 @@ const CompanyDashboard = () => {
 
   // Helper function to calculate stats from jobs data
   const calculateStats = (jobs) => {
-    const totalJobs = jobs.length;
-    const activeJobs = jobs.filter(job => job.active && new Date(job.deadline) > new Date()).length;
-    const totalApplicants = jobs.reduce((total, job) => total + (job.applicantCount || 0), 0);
+    const jobsArray = jobs || [];
+    const totalJobs = jobsArray.length;
+    const activeJobs = jobsArray.filter(job => job.active && new Date(job.deadline) > new Date()).length;
+    const totalApplicants = jobsArray.reduce((total, job) => total + (job.applicantCount || 0), 0);
     
     return {
       totalJobs,
@@ -65,7 +76,7 @@ const CompanyDashboard = () => {
     <div className="container">
       {/* Welcome Section */}
       <div className="card">
-        <h1>Welcome, {company?.companyName}</h1>
+        <h1>Welcome, {company?.companyName || 'Your Company'}</h1>
         <p>Company Management Dashboard</p>
         
         {!company?.approved && (
@@ -89,25 +100,25 @@ const CompanyDashboard = () => {
       <div className="row" style={{ marginTop: '2rem' }}>
         <div className="col-3">
           <div className="card" style={{ textAlign: 'center' }}>
-            <h3>{stats.totalJobs}</h3>
+            <h3>{stats.totalJobs || 0}</h3>
             <p>Total Jobs</p>
           </div>
         </div>
         <div className="col-3">
           <div className="card" style={{ textAlign: 'center' }}>
-            <h3>{stats.activeJobs}</h3>
+            <h3>{stats.activeJobs || 0}</h3>
             <p>Active Jobs</p>
           </div>
         </div>
         <div className="col-3">
           <div className="card" style={{ textAlign: 'center' }}>
-            <h3>{stats.totalApplicants}</h3>
+            <h3>{stats.totalApplicants || 0}</h3>
             <p>Total Applicants</p>
           </div>
         </div>
         <div className="col-3">
           <div className="card" style={{ textAlign: 'center' }}>
-            <h3>{stats.interviewReadyCandidates}</h3>
+            <h3>{stats.interviewReadyCandidates || 0}</h3>
             <p>Interview Ready</p>
           </div>
         </div>
@@ -167,11 +178,11 @@ const CompanyDashboard = () => {
                   <tr key={job.id}>
                     <td>
                       <Link to={`/company/jobs/${job.id}`}>
-                        <strong>{job.title}</strong>
+                        <strong>{job.title || 'Untitled Job'}</strong>
                       </Link>
                     </td>
-                    <td>{job.location}</td>
-                    <td>{job.jobType}</td>
+                    <td>{job.location || 'Not specified'}</td>
+                    <td>{job.jobType || 'Not specified'}</td>
                     <td>{job.applicantCount || 0}</td>
                     <td>
                       <span style={{

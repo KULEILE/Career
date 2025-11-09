@@ -17,10 +17,18 @@ const Landing = () => {
           getAllCourses(),
           getAllJobs()
         ]);
-        setCourses(coursesResponse.data.courses.slice(0, 6));
-        setJobs(jobsResponse.data.jobs.slice(0, 6));
+        
+        // Safe data extraction with fallbacks
+        const coursesData = coursesResponse?.data?.courses || [];
+        const jobsData = jobsResponse?.data?.jobs || [];
+        
+        setCourses(coursesData.slice(0, 6));
+        setJobs(jobsData.slice(0, 6));
       } catch (error) {
         console.error('Error fetching data:', error);
+        // Set empty arrays on error to prevent further issues
+        setCourses([]);
+        setJobs([]);
       } finally {
         setLoading(false);
       }
@@ -96,20 +104,26 @@ const Landing = () => {
       <section style={{ padding: '4rem 0', borderBottom: '1px solid #cccccc' }}>
         <h2 style={{ marginBottom: '2rem' }}>Featured Courses</h2>
         <div className="row">
-          {courses.map(course => (
-            <div key={course.id} className="col-6">
-              <div className="card">
-                <h4>{course.name}</h4>
-                <p>{course.institution?.institutionName}</p>
-                <p style={{ color: '#666666', fontSize: '0.9rem' }}>
-                  {course.description?.substring(0, 100)}...
-                </p>
-                <div style={{ marginTop: '1rem' }}>
-                  <span style={{ fontWeight: 'bold' }}>Duration:</span> {course.duration}
+          {courses.length > 0 ? (
+            courses.map(course => (
+              <div key={course.id} className="col-6">
+                <div className="card">
+                  <h4>{course.name || 'Unnamed Course'}</h4>
+                  <p>{course.institution?.institutionName || 'Unknown Institution'}</p>
+                  <p style={{ color: '#666666', fontSize: '0.9rem' }}>
+                    {course.description ? `${course.description.substring(0, 100)}...` : 'No description available'}
+                  </p>
+                  <div style={{ marginTop: '1rem' }}>
+                    <span style={{ fontWeight: 'bold' }}>Duration:</span> {course.duration || 'Not specified'}
+                  </div>
                 </div>
               </div>
+            ))
+          ) : (
+            <div className="col-12">
+              <p style={{ textAlign: 'center', color: '#666666' }}>No courses available at the moment.</p>
             </div>
-          ))}
+          )}
         </div>
         {!isAuthenticated && (
           <div style={{ textAlign: 'center', marginTop: '2rem' }}>
@@ -124,20 +138,26 @@ const Landing = () => {
       <section style={{ padding: '4rem 0' }}>
         <h2 style={{ marginBottom: '2rem' }}>Recent Job Opportunities</h2>
         <div className="row">
-          {jobs.map(job => (
-            <div key={job.id} className="col-6">
-              <div className="card">
-                <h4>{job.title}</h4>
-                <p>{job.company?.companyName}</p>
-                <p style={{ color: '#666666', fontSize: '0.9rem' }}>
-                  {job.description?.substring(0, 100)}...
-                </p>
-                <div style={{ marginTop: '1rem' }}>
-                  <span style={{ fontWeight: 'bold' }}>Location:</span> {job.location}
+          {jobs.length > 0 ? (
+            jobs.map(job => (
+              <div key={job.id} className="col-6">
+                <div className="card">
+                  <h4>{job.title || 'Untitled Job'}</h4>
+                  <p>{job.company?.companyName || 'Unknown Company'}</p>
+                  <p style={{ color: '#666666', fontSize: '0.9rem' }}>
+                    {job.description ? `${job.description.substring(0, 100)}...` : 'No description available'}
+                  </p>
+                  <div style={{ marginTop: '1rem' }}>
+                    <span style={{ fontWeight: 'bold' }}>Location:</span> {job.location || 'Not specified'}
+                  </div>
                 </div>
               </div>
+            ))
+          ) : (
+            <div className="col-12">
+              <p style={{ textAlign: 'center', color: '#666666' }}>No job opportunities available at the moment.</p>
             </div>
-          ))}
+          )}
         </div>
       </section>
     </div>

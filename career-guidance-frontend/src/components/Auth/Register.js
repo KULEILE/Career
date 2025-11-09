@@ -335,12 +335,12 @@ const Register = () => {
       role: value,
       // Clear role-specific fields when changing roles
       organizationName: '',
-      adminSecret: value !== 'admin' ? '' : prev.adminSecret,
-      contactPhone: '',
-      contactEmail: '',
-      location: '',
-      slogan: '',
-      description: ''
+      //adminSecret: value !== 'admin' ? '' : prev.adminSecret,
+      //contactPhone: '',
+      //contactEmail: '',
+      //location: '',
+      //slogan: '',
+//description: ''
     }));
   };
 

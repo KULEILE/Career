@@ -58,7 +58,7 @@ const StudentDashboard = () => {
         }));
         setNotifications(notificationsData);
 
-        // Calculate stats
+        // Calculate stats with safe array access
         const totalApplications = applications.length;
         const pendingApplications = applications.filter(app => app.status === 'pending').length;
         const admittedApplications = applications.filter(app => app.status === 'admitted').length;
@@ -75,7 +75,7 @@ const StudentDashboard = () => {
         const maxApplicationsReached = Object.values(applicationsPerInstitution).some(count => count >= 2);
 
         setDashboardData({
-          student: userProfile,
+          student: userProfile || {},
           stats: {
             totalApplications,
             pendingApplications,
@@ -127,7 +127,7 @@ const StudentDashboard = () => {
         console.error('Error fetching dashboard data:', error);
         // Set fallback data
         setDashboardData({
-          student: userProfile,
+          student: userProfile || {},
           stats: {
             totalApplications: 0,
             pendingApplications: 0,
@@ -164,12 +164,12 @@ const StudentDashboard = () => {
     <div className="container">
       {/* Welcome Section */}
       <div className="card">
-        <h1 style={{ marginBottom: '0.5rem' }}>Welcome back, {student?.firstName}!</h1>
+        <h1 style={{ marginBottom: '0.5rem' }}>Welcome back, {student?.firstName || 'Student'}!</h1>
         <p style={{ color: '#666666', marginBottom: '0' }}>
           Here's your career guidance dashboard
         </p>
         
-        {!student?.subjects || student.subjects.length === 0 ? (
+        {(!student?.subjects || student.subjects.length === 0) ? (
           <div className="alert alert-info" style={{ marginTop: '1rem' }}>
             <strong>Complete Your Profile:</strong> Add your high school subjects and grades to get better course recommendations.
             <br />
@@ -245,7 +245,7 @@ const StudentDashboard = () => {
       <div className="card" style={{ marginTop: '2rem' }}>
         <h2 style={{ marginBottom: '1.5rem' }}>Quick Actions</h2>
         <div className="row">
-          {quickActions.map((action, index) => (
+          {(quickActions || []).map((action, index) => (
             <div key={index} className="col-4">
               <div 
                 className="card" 
@@ -284,7 +284,7 @@ const StudentDashboard = () => {
       </div>
 
       {/* Recent Applications */}
-      {recentApplications.length > 0 && (
+      {recentApplications && recentApplications.length > 0 && (
         <div className="card" style={{ marginTop: '2rem' }}>
           <h2 style={{ marginBottom: '1.5rem' }}>Recent Applications</h2>
           <div className="table-responsive">
@@ -301,9 +301,9 @@ const StudentDashboard = () => {
                 {recentApplications.map(application => (
                   <tr key={application.id}>
                     <td style={{ borderColor: '#cccccc' }}>
-                      <strong>{application.courseName}</strong>
+                      <strong>{application.courseName || 'Unknown Course'}</strong>
                     </td>
-                    <td style={{ borderColor: '#cccccc' }}>{application.institutionName}</td>
+                    <td style={{ borderColor: '#cccccc' }}>{application.institutionName || 'Unknown Institution'}</td>
                     <td style={{ borderColor: '#cccccc' }}>
                       {application.appliedAt?.toDate?.().toLocaleDateString() || 'N/A'}
                     </td>

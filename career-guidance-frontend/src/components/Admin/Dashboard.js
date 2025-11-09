@@ -17,18 +17,33 @@ const AdminDashboard = () => {
   const fetchDashboardData = async () => {
     try {
       const [statsResponse, institutionsResponse, companiesResponse, usersResponse] = await Promise.all([
-        getAdminDashboard(),
-        getInstitutions(),
-        getCompanies(),
-        getUsers()
+        getAdminDashboard().catch(() => ({ data: { stats: null } })),
+        getInstitutions().catch(() => ({ data: { institutions: [] } })),
+        getCompanies().catch(() => ({ data: { companies: [] } })),
+        getUsers().catch(() => ({ data: { users: [] } }))
       ]);
 
-      setStats(statsResponse.data.stats);
-      setInstitutions(institutionsResponse.data.institutions);
-      setCompanies(companiesResponse.data.companies);
-      setUsers(usersResponse.data.users);
+      setStats(statsResponse?.data?.stats || {
+        totalStudents: 0,
+        totalInstitutions: 0,
+        totalCompanies: 0,
+        totalApplications: 0
+      });
+      setInstitutions(institutionsResponse?.data?.institutions || []);
+      setCompanies(companiesResponse?.data?.companies || []);
+      setUsers(usersResponse?.data?.users || []);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
+      // Set fallback data
+      setStats({
+        totalStudents: 0,
+        totalInstitutions: 0,
+        totalCompanies: 0,
+        totalApplications: 0
+      });
+      setInstitutions([]);
+      setCompanies([]);
+      setUsers([]);
     } finally {
       setLoading(false);
     }
@@ -38,7 +53,7 @@ const AdminDashboard = () => {
 
   const pendingCompanies = companies.filter(company => !company.approved).length;
   const pendingInstitutions = institutions.filter(inst => !inst.approved).length;
-  const recentUsers = users.slice(0, 5).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const recentUsers = (users || []).slice(0, 5).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
   return (
     <div className="container">
@@ -53,25 +68,25 @@ const AdminDashboard = () => {
         <div className="row" style={{ marginTop: '2rem' }}>
           <div className="col-3">
             <div className="card" style={{ textAlign: 'center' }}>
-              <h3>{stats.totalStudents}</h3>
+              <h3>{stats.totalStudents || 0}</h3>
               <p>Total Students</p>
             </div>
           </div>
           <div className="col-3">
             <div className="card" style={{ textAlign: 'center' }}>
-              <h3>{stats.totalInstitutions}</h3>
+              <h3>{stats.totalInstitutions || 0}</h3>
               <p>Institutions</p>
             </div>
           </div>
           <div className="col-3">
             <div className="card" style={{ textAlign: 'center' }}>
-              <h3>{stats.totalCompanies}</h3>
+              <h3>{stats.totalCompanies || 0}</h3>
               <p>Companies</p>
             </div>
           </div>
           <div className="col-3">
             <div className="card" style={{ textAlign: 'center' }}>
-              <h3>{stats.totalApplications}</h3>
+              <h3>{stats.totalApplications || 0}</h3>
               <p>Applications</p>
             </div>
           </div>
@@ -170,8 +185,8 @@ const AdminDashboard = () => {
             <tbody>
               {recentUsers.map(user => (
                 <tr key={user.id}>
-                  <td>{user.firstName} {user.lastName}</td>
-                  <td>{user.email}</td>
+                  <td>{(user.firstName || '') + ' ' + (user.lastName || '')}</td>
+                  <td>{user.email || 'No email'}</td>
                   <td>
                     <span style={{
                       padding: '0.25rem 0.5rem',
@@ -180,7 +195,7 @@ const AdminDashboard = () => {
                       color: 'white',
                       fontSize: '0.875rem'
                     }}>
-                      {user.role.toUpperCase()}
+                      {(user.role || 'user').toUpperCase()}
                     </span>
                   </td>
                   <td>
@@ -190,7 +205,7 @@ const AdminDashboard = () => {
                     {(user.role === 'admin' || (!user.institutionName && !user.companyName && !user.highSchool)) && 
                       'N/A'}
                   </td>
-                  <td>{new Date(user.createdAt).toLocaleDateString()}</td>
+                  <td>{user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}</td>
                   <td>
                     <span style={{
                       padding: '0.25rem 0.5rem',
