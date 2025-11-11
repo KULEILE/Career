@@ -1,292 +1,235 @@
 import React, { useState, useEffect } from 'react';
-import { getInstitutionProspectus, uploadProspectus, deleteProspectus, publishProspectus } from '../../services/api';
+import { getInstitutionFaculties, createFaculty, updateFaculty, deleteFaculty } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import Loading from '../Common/Loading';
 
-const ProspectusManagement = () => {
-  const [prospectusList, setProspectusList] = useState([]);
+const FacultyManagement = () => {
+  const [faculties, setFaculties] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [showUploadForm, setShowUploadForm] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [editingFaculty, setEditingFaculty] = useState(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const { userProfile } = useAuth();
 
-  const [uploadData, setUploadData] = useState({
-    title: '',
+  const [formData, setFormData] = useState({
+    name: '',
     description: '',
-    academicYear: '',
-    file: null
+    dean: '',
+    contactEmail: '',
+    phone: '',
+    departments: ['']
   });
 
   useEffect(() => {
-    fetchProspectus();
+    fetchFaculties();
   }, []);
 
-  const fetchProspectus = async () => {
+  const fetchFaculties = async () => {
     try {
-      const response = await getInstitutionProspectus();
-      setProspectusList(response.data.prospectus || []);
+      const response = await getInstitutionFaculties();
+      setFaculties(response.data.faculties || []);
     } catch (err) {
-      console.error('Error loading prospectus:', err);
-      setError('Error loading prospectus documents. Please try again later.');
-      setProspectusList([]);
+      console.error('Error fetching faculties:', err);
+      setError('Error loading faculties. Please try again later.');
+      setFaculties([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      // Validate file type
-      if (file.type !== 'application/pdf') {
-        setError('Please select a PDF file');
-        e.target.value = '';
-        return;
-      }
-      
-      // Validate file size (5MB max for better performance)
-      if (file.size > 5 * 1024 * 1024) {
-        setError('File size must be less than 5MB for better performance');
-        e.target.value = '';
-        return;
-      }
-      
-      setUploadData(prev => ({ ...prev, file }));
-      setError('');
-    }
-  };
-
-  const handleUpload = async (e) => {
-    e.preventDefault();
-    
-    // Validate form data
-    if (!uploadData.title.trim()) {
-      setError('Title is required');
-      return;
-    }
-    
-    if (!uploadData.academicYear.trim()) {
-      setError('Academic year is required');
-      return;
-    }
-    
-    if (!uploadData.description.trim()) {
-      setError('Description is required');
-      return;
-    }
-    
-    if (!uploadData.file) {
-      setError('Please select a PDF file to upload');
-      return;
-    }
-
-    setUploading(true);
-    setMessage('');
-    setError('');
-
-    try {
-      // Convert file to base64 for storage
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        try {
-          const base64File = event.target.result;
-          const fileName = uploadData.file.name;
-          const fileSize = uploadData.file.size;
-
-          // Prepare upload data
-          const uploadPayload = {
-            title: uploadData.title.trim(),
-            description: uploadData.description.trim(),
-            academicYear: uploadData.academicYear.trim(),
-            fileUrl: base64File,
-            fileName: fileName,
-            fileSize: fileSize,
-            institutionId: userProfile?.uid
-          };
-
-          await uploadProspectus(uploadPayload);
-          setMessage('Prospectus uploaded successfully');
-          resetUploadForm();
-          fetchProspectus();
-        } catch (uploadError) {
-          setError(uploadError.response?.data?.error || 'Error uploading prospectus');
-        } finally {
-          setUploading(false);
-        }
-      };
-      
-      reader.onerror = () => {
-        setError('Error reading file');
-        setUploading(false);
-      };
-      
-      reader.readAsDataURL(uploadData.file);
-      
-    } catch (err) {
-      setError('Error processing file upload');
-      setUploading(false);
-    }
-  };
-
-  const handlePublish = async (prospectusId, publishStatus) => {
-    try {
-      await publishProspectus(prospectusId, { published: publishStatus });
-      setMessage(`Prospectus ${publishStatus ? 'published' : 'unpublished'} successfully`);
-      fetchProspectus();
-    } catch (err) {
-      setError(err.response?.data?.error || 'Error updating prospectus status');
-    }
-  };
-
-  const handleDelete = async (prospectusId) => {
-    if (!window.confirm('Are you sure you want to delete this prospectus? This action cannot be undone.')) return;
-
-    try {
-      await deleteProspectus(prospectusId);
-      setMessage('Prospectus deleted successfully');
-      fetchProspectus();
-    } catch (err) {
-      setError(err.response?.data?.error || 'Error deleting prospectus');
-    }
-  };
-
-  const resetUploadForm = () => {
-    setUploadData({
-      title: '',
-      description: '',
-      academicYear: '',
-      file: null
-    });
-    setShowUploadForm(false);
-    // Reset file input
-    const fileInput = document.getElementById('prospectus-file');
-    if (fileInput) fileInput.value = '';
-  };
-
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setUploadData(prev => ({ ...prev, [name]: value }));
-    // Clear error when user starts typing
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
     if (error) setError('');
   };
 
-  const handleViewProspectus = (prospectus) => {
-    if (prospectus.fileUrl) {
-      if (prospectus.fileUrl.startsWith('data:')) {
-        // Open base64 PDF in new window
-        const newWindow = window.open();
-        newWindow.document.write(`
-          <html>
-            <head>
-              <title>${prospectus.title}</title>
-              <style>
-                body { margin: 0; padding: 20px; font-family: Arial, sans-serif; }
-                .container { max-width: 100%; text-align: center; }
-                .pdf-view { width: 100%; height: 90vh; border: none; }
-                .info { margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 4px; }
-                .info h3 { margin: 0 0 10px 0; color: #333; }
-                .info p { margin: 5px 0; color: #666; }
-              </style>
-            </head>
-            <body>
-              <div class="container">
-                <div class="info">
-                  <h3>${prospectus.title}</h3>
-                  <p><strong>Academic Year:</strong> ${prospectus.academicYear}</p>
-                  <p><strong>Description:</strong> ${prospectus.description}</p>
-                  <p><strong>Status:</strong> ${prospectus.published ? 'Published' : 'Draft'}</p>
-                </div>
-                <iframe src="${prospectus.fileUrl}" class="pdf-view" title="${prospectus.title}"></iframe>
-              </div>
-            </body>
-          </html>
-        `);
-      } else {
-        // Open regular URL in new tab
-        window.open(prospectus.fileUrl, '_blank');
-      }
-    } else {
-      setError('Prospectus file not available');
+  const handleDepartmentChange = (index, value) => {
+    const updatedDepartments = [...formData.departments];
+    updatedDepartments[index] = value;
+    setFormData(prev => ({
+      ...prev,
+      departments: updatedDepartments
+    }));
+  };
+
+  const addDepartmentField = () => {
+    setFormData(prev => ({
+      ...prev,
+      departments: [...prev.departments, '']
+    }));
+  };
+
+  const removeDepartmentField = (index) => {
+    if (formData.departments.length > 1) {
+      const updatedDepartments = formData.departments.filter((_, i) => i !== index);
+      setFormData(prev => ({
+        ...prev,
+        departments: updatedDepartments
+      }));
     }
   };
 
-  if (loading) return <Loading message="Loading prospectus documents..." />;
+  const validateForm = () => {
+    if (!formData.name.trim()) {
+      setError('Faculty name is required');
+      return false;
+    }
+    if (!formData.description.trim()) {
+      setError('Description is required');
+      return false;
+    }
+    if (!formData.dean.trim()) {
+      setError('Dean name is required');
+      return false;
+    }
+    if (!formData.contactEmail.trim()) {
+      setError('Contact email is required');
+      return false;
+    }
+    if (!formData.contactEmail.includes('@')) {
+      setError('Please enter a valid email address');
+      return false;
+    }
+    if (formData.departments.some(dept => !dept.trim())) {
+      setError('All department names must be filled');
+      return false;
+    }
+    return true;
+  };
 
-  const publishedCount = prospectusList.filter(p => p.published).length;
-  const draftCount = prospectusList.filter(p => !p.published).length;
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!validateForm()) return;
+
+    try {
+      const facultyData = {
+        ...formData,
+        departments: formData.departments.filter(dept => dept.trim()),
+        institutionId: userProfile?.uid
+      };
+
+      if (editingFaculty) {
+        await updateFaculty(editingFaculty.id, facultyData);
+        setMessage('Faculty updated successfully');
+      } else {
+        await createFaculty(facultyData);
+        setMessage('Faculty created successfully');
+      }
+
+      resetForm();
+      fetchFaculties();
+    } catch (err) {
+      setError(err.response?.data?.error || `Error ${editingFaculty ? 'updating' : 'creating'} faculty`);
+    }
+  };
+
+  const handleEdit = (faculty) => {
+    setEditingFaculty(faculty);
+    setFormData({
+      name: faculty.name || '',
+      description: faculty.description || '',
+      dean: faculty.dean || '',
+      contactEmail: faculty.contactEmail || '',
+      phone: faculty.phone || '',
+      departments: faculty.departments && faculty.departments.length > 0 
+        ? [...faculty.departments] 
+        : ['']
+    });
+    setShowForm(true);
+    setError('');
+    setMessage('');
+  };
+
+  const handleDelete = async (facultyId) => {
+    if (!window.confirm('Are you sure you want to delete this faculty? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      await deleteFaculty(facultyId);
+      setMessage('Faculty deleted successfully');
+      fetchFaculties();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error deleting faculty');
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      description: '',
+      dean: '',
+      contactEmail: '',
+      phone: '',
+      departments: ['']
+    });
+    setEditingFaculty(null);
+    setShowForm(false);
+    setError('');
+  };
+
+  const handleCancel = () => {
+    resetForm();
+    setMessage('');
+  };
+
+  if (loading) return <Loading message="Loading faculties..." />;
 
   return (
     <div className="container">
       <div className="card">
         <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <h2 className="card-title">Prospectus Management</h2>
-            <p>Upload and manage your institution's prospectus documents</p>
+            <h2 className="card-title">Faculty Management</h2>
+            <p>Manage your institution's faculties and departments</p>
           </div>
-          <button className="btn btn-primary" onClick={() => setShowUploadForm(!showUploadForm)}>
-            {showUploadForm ? 'Cancel' : 'Upload Prospectus'}
+          <button 
+            className="btn btn-primary" 
+            onClick={() => setShowForm(!showForm)}
+            disabled={showForm}
+          >
+            Add New Faculty
           </button>
         </div>
 
         {message && <div className="alert alert-success">{message}</div>}
         {error && <div className="alert alert-error">{error}</div>}
 
-        {/* Statistics */}
-        {prospectusList.length > 0 && (
-          <div className="row" style={{ marginBottom: '2rem' }}>
-            <div className="col-4">
-              <div className="card" style={{ textAlign: 'center' }}>
-                <h3>{prospectusList.length}</h3>
-                <p>Total Prospectus</p>
-              </div>
-            </div>
-            <div className="col-4">
-              <div className="card" style={{ textAlign: 'center' }}>
-                <h3>{publishedCount}</h3>
-                <p>Published</p>
-              </div>
-            </div>
-            <div className="col-4">
-              <div className="card" style={{ textAlign: 'center' }}>
-                <h3>{draftCount}</h3>
-                <p>Draft</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Upload Form */}
-        {showUploadForm && (
+        {/* Faculty Form */}
+        {showForm && (
           <div className="card" style={{ marginBottom: '2rem' }}>
-            <h3>Upload New Prospectus</h3>
-            <form onSubmit={handleUpload}>
+            <h3>{editingFaculty ? 'Edit Faculty' : 'Create New Faculty'}</h3>
+            <form onSubmit={handleSubmit}>
               <div className="row">
                 <div className="col-6">
                   <div className="form-group">
-                    <label className="form-label">Title *</label>
+                    <label className="form-label">Faculty Name *</label>
                     <input
                       type="text"
-                      name="title"
+                      name="name"
                       className="form-control"
-                      value={uploadData.title}
+                      value={formData.name}
                       onChange={handleInputChange}
-                      placeholder="Enter prospectus title"
+                      placeholder="Enter faculty name"
                       required
                     />
                   </div>
                 </div>
                 <div className="col-6">
                   <div className="form-group">
-                    <label className="form-label">Academic Year *</label>
+                    <label className="form-label">Dean Name *</label>
                     <input
                       type="text"
-                      name="academicYear"
+                      name="dean"
                       className="form-control"
-                      value={uploadData.academicYear}
+                      value={formData.dean}
                       onChange={handleInputChange}
-                      placeholder="e.g., 2024-2025"
+                      placeholder="Enter dean's name"
                       required
                     />
                   </div>
@@ -298,122 +241,157 @@ const ProspectusManagement = () => {
                 <textarea
                   name="description"
                   className="form-control"
-                  value={uploadData.description}
+                  value={formData.description}
                   onChange={handleInputChange}
                   rows="3"
-                  placeholder="Brief description of the prospectus content..."
+                  placeholder="Brief description of the faculty..."
                   required
                 />
               </div>
 
+              <div className="row">
+                <div className="col-6">
+                  <div className="form-group">
+                    <label className="form-label">Contact Email *</label>
+                    <input
+                      type="email"
+                      name="contactEmail"
+                      className="form-control"
+                      value={formData.contactEmail}
+                      onChange={handleInputChange}
+                      placeholder="faculty@institution.edu"
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="col-6">
+                  <div className="form-group">
+                    <label className="form-label">Phone Number</label>
+                    <input
+                      type="tel"
+                      name="phone"
+                      className="form-control"
+                      value={formData.phone}
+                      onChange={handleInputChange}
+                      placeholder="+1234567890"
+                    />
+                  </div>
+                </div>
+              </div>
+
               <div className="form-group">
-                <label className="form-label">PDF File *</label>
-                <input
-                  type="file"
-                  id="prospectus-file"
-                  className="form-control"
-                  accept=".pdf"
-                  onChange={handleFileChange}
-                  required
-                />
+                <label className="form-label">Departments *</label>
+                {formData.departments.map((department, index) => (
+                  <div key={index} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={department}
+                      onChange={(e) => handleDepartmentChange(index, e.target.value)}
+                      placeholder={`Department ${index + 1} name`}
+                      required
+                    />
+                    {formData.departments.length > 1 && (
+                      <button
+                        type="button"
+                        className="btn btn-danger"
+                        onClick={() => removeDepartmentField(index)}
+                        style={{ minWidth: '40px' }}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={addDepartmentField}
+                >
+                  Add Another Department
+                </button>
                 <small className="form-text">
-                  Only PDF files are allowed. Maximum file size: 5MB
-                  {uploadData.file && (
-                    <span style={{ color: '#28a745', marginLeft: '10px' }}>
-                      Selected: {uploadData.file.name} ({(uploadData.file.size / 1024 / 1024).toFixed(2)} MB)
-                    </span>
-                  )}
+                  Add all departments that belong to this faculty. At least one department is required.
                 </small>
               </div>
 
               <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                <button type="submit" className="btn btn-primary" disabled={uploading}>
-                  {uploading ? 'Uploading...' : 'Upload Prospectus'}
+                <button type="submit" className="btn btn-primary">
+                  {editingFaculty ? 'Update Faculty' : 'Create Faculty'}
                 </button>
-                <button type="button" className="btn btn-secondary" onClick={resetUploadForm}>
+                <button type="button" className="btn btn-secondary" onClick={handleCancel}>
                   Cancel
                 </button>
-                {uploading && (
-                  <div style={{ fontSize: '0.9rem', color: '#666' }}>
-                    Processing file... Please wait.
-                  </div>
-                )}
               </div>
             </form>
           </div>
         )}
 
-        {/* Prospectus List */}
-        <h3>Prospectus Documents ({prospectusList.length})</h3>
-        {prospectusList.length === 0 ? (
+        {/* Faculties List */}
+        <h3>Faculties ({faculties.length})</h3>
+        {faculties.length === 0 ? (
           <div className="alert alert-info">
-            No prospectus documents found. Upload your first prospectus to make it available to students.
+            No faculties found. Create your first faculty to start organizing your courses.
           </div>
         ) : (
           <div className="table-responsive">
             <table className="table table-striped">
               <thead>
                 <tr>
-                  <th>Title</th>
-                  <th>Academic Year</th>
-                  <th>Description</th>
-                  <th>File Size</th>
-                  <th>Upload Date</th>
-                  <th>Status</th>
+                  <th>Faculty Name</th>
+                  <th>Dean</th>
+                  <th>Contact Email</th>
+                  <th>Departments</th>
+                  <th>Created Date</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {prospectusList.map(prospectus => (
-                  <tr key={prospectus.id}>
+                {faculties.map(faculty => (
+                  <tr key={faculty.id}>
                     <td>
-                      <strong>{prospectus.title}</strong>
+                      <strong>{faculty.name}</strong>
+                      <div style={{ fontSize: '0.875rem', color: '#666', marginTop: '0.25rem' }}>
+                        {faculty.description?.substring(0, 100)}
+                        {faculty.description?.length > 100 ? '...' : ''}
+                      </div>
                     </td>
-                    <td>{prospectus.academicYear}</td>
-                    <td style={{ maxWidth: '200px' }}>
-                      {prospectus.description?.substring(0, 100)}
-                      {prospectus.description?.length > 100 ? '...' : ''}
+                    <td>{faculty.dean}</td>
+                    <td>{faculty.contactEmail}</td>
+                    <td>
+                      {faculty.departments && faculty.departments.length > 0 ? (
+                        <div>
+                          {faculty.departments.slice(0, 2).map((dept, idx) => (
+                            <span key={idx} style={{ display: 'block', fontSize: '0.875rem' }}>
+                              • {dept}
+                            </span>
+                          ))}
+                          {faculty.departments.length > 2 && (
+                            <span style={{ fontSize: '0.875rem', color: '#666' }}>
+                              +{faculty.departments.length - 2} more
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span style={{ color: '#999', fontSize: '0.875rem' }}>No departments</span>
+                      )}
                     </td>
                     <td>
-                      {prospectus.fileSize ? `${(prospectus.fileSize / 1024 / 1024).toFixed(2)} MB` : 'N/A'}
+                      {faculty.createdAt ? new Date(faculty.createdAt).toLocaleDateString() : 'N/A'}
                     </td>
                     <td>
-                      {prospectus.createdAt ? 
-                        new Date(prospectus.createdAt?.toDate ? prospectus.createdAt.toDate() : prospectus.createdAt).toLocaleDateString() 
-                        : 'N/A'
-                      }
-                    </td>
-                    <td>
-                      <span style={{
-                        padding: '0.25rem 0.5rem',
-                        borderRadius: '4px',
-                        backgroundColor: prospectus.published ? '#28a745' : '#6c757d',
-                        color: 'white',
-                        fontSize: '0.875rem'
-                      }}>
-                        {prospectus.published ? 'PUBLISHED' : 'DRAFT'}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <button
                           className="btn btn-primary btn-sm"
-                          onClick={() => handleViewProspectus(prospectus)}
-                          title="View Prospectus"
+                          onClick={() => handleEdit(faculty)}
+                          title="Edit Faculty"
                         >
-                          View
-                        </button>
-                        <button
-                          className={`btn btn-sm ${prospectus.published ? 'btn-warning' : 'btn-success'}`}
-                          onClick={() => handlePublish(prospectus.id, !prospectus.published)}
-                          title={prospectus.published ? 'Unpublish Prospectus' : 'Publish Prospectus'}
-                        >
-                          {prospectus.published ? 'Unpublish' : 'Publish'}
+                          Edit
                         </button>
                         <button
                           className="btn btn-danger btn-sm"
-                          onClick={() => handleDelete(prospectus.id)}
-                          title="Delete Prospectus"
+                          onClick={() => handleDelete(faculty.id)}
+                          title="Delete Faculty"
                         >
                           Delete
                         </button>
@@ -426,23 +404,48 @@ const ProspectusManagement = () => {
           </div>
         )}
 
-        {/* Info Section */}
+        {/* Information Section */}
         <div className="card" style={{ marginTop: '2rem', borderLeft: '4px solid #17a2b8' }}>
-          <h4>About Prospectus Management</h4>
+          <h4>About Faculty Management</h4>
           <ul>
-            <li><strong>Title:</strong> Required. Choose a clear, descriptive title for your prospectus.</li>
-            <li><strong>Academic Year:</strong> Required. Format: "YYYY-YYYY" (e.g., 2024-2025).</li>
-            <li><strong>Description:</strong> Required. Provide a brief overview of the prospectus content.</li>
-            <li><strong>File:</strong> Required. Only PDF files up to 5MB are accepted.</li>
-            <li><strong>Published:</strong> Published prospectus documents are visible to students and the public.</li>
-            <li><strong>Draft:</strong> Draft documents are only visible to institution staff.</li>
-            <li>Students can download published prospectus documents from your institution's public profile.</li>
-            <li>Keep your prospectus updated with the latest course information and requirements.</li>
+            <li><strong>Faculty Name:</strong> Required. The official name of the faculty (e.g., "Faculty of Engineering").</li>
+            <li><strong>Dean:</strong> Required. The name of the faculty dean or head.</li>
+            <li><strong>Description:</strong> Required. Brief overview of the faculty's focus and programs.</li>
+            <li><strong>Contact Email:</strong> Required. Official email address for the faculty office.</li>
+            <li><strong>Phone:</strong> Optional. Contact number for the faculty office.</li>
+            <li><strong>Departments:</strong> Required. List all academic departments under this faculty.</li>
+            <li>Each faculty can have multiple departments for better organization.</li>
+            <li>Faculties are used to categorize and organize courses in your institution.</li>
           </ul>
+        </div>
+
+        {/* Best Practices */}
+        <div className="card" style={{ marginTop: '1rem', backgroundColor: '#f8f9fa' }}>
+          <h5>Best Practices</h5>
+          <div className="row">
+            <div className="col-6">
+              <strong>Organization Tips:</strong>
+              <ul style={{ fontSize: '0.9rem', marginBottom: 0 }}>
+                <li>Create faculties based on academic disciplines</li>
+                <li>Use clear, descriptive faculty names</li>
+                <li>Include all relevant departments</li>
+                <li>Keep contact information updated</li>
+              </ul>
+            </div>
+            <div className="col-6">
+              <strong>Course Management:</strong>
+              <ul style={{ fontSize: '0.9rem', marginBottom: 0 }}>
+                <li>Courses are assigned to specific faculties</li>
+                <li>Students can filter courses by faculty</li>
+                <li>Each faculty can have multiple courses</li>
+                <li>Organize departments logically within faculties</li>
+              </ul>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   );
 };
 
-export default ProspectusManagement;
+export default FacultyManagement;
