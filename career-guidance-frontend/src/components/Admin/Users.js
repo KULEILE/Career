@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getUsers } from '../../services/api';
+import { getUsers, updateUser, deleteUser } from '../../services/api';
 import Loading from '../Common/Loading';
 
 const AdminUsers = () => {
@@ -7,6 +7,9 @@ const AdminUsers = () => {
   const [loading, setLoading] = useState(true);
   const [filterRole, setFilterRole] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [actionLoading, setActionLoading] = useState(null);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => {
     fetchUsers();
@@ -20,6 +23,51 @@ const AdminUsers = () => {
       console.error('Error loading users:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleViewUser = (user) => {
+    // In a real implementation, this would open a modal or navigate to user details
+    alert(`User Details:\nName: ${user.firstName} ${user.lastName}\nEmail: ${user.email}\nRole: ${user.role}\nStatus: ${user.approved !== false ? 'ACTIVE' : 'PENDING'}`);
+  };
+
+  const handleEditUser = async (user) => {
+    setActionLoading(user.id);
+    setMessage('');
+    setError('');
+
+    try {
+      // In a real implementation, this would open an edit form/modal
+      const newRole = prompt('Enter new role (student/institution/company/admin):', user.role);
+      if (newRole && ['student', 'institution', 'company', 'admin'].includes(newRole)) {
+        await updateUser(user.id, { role: newRole });
+        setMessage('User updated successfully');
+        fetchUsers(); // Refresh the list
+      }
+    } catch (error) {
+      setError(error.response?.data?.error || 'Error updating user');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDeleteUser = async (userId) => {
+    if (!window.confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
+      return;
+    }
+
+    setActionLoading(userId);
+    setMessage('');
+    setError('');
+
+    try {
+      await deleteUser(userId);
+      setMessage('User deleted successfully');
+      setUsers(prev => prev.filter(user => user.id !== userId));
+    } catch (error) {
+      setError(error.response?.data?.error || 'Error deleting user');
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -61,6 +109,9 @@ const AdminUsers = () => {
           <h2 className="card-title">User Management</h2>
           <p>Manage all users in the system</p>
         </div>
+
+        {message && <div className="alert alert-success">{message}</div>}
+        {error && <div className="alert alert-error">{error}</div>}
 
         {/* Statistics */}
         <div className="row" style={{ marginBottom: '2rem' }}>
@@ -204,14 +255,25 @@ const AdminUsers = () => {
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
-                        <button className="btn btn-info btn-sm">
+                        <button 
+                          className="btn btn-info btn-sm"
+                          onClick={() => handleViewUser(user)}
+                        >
                           View
                         </button>
-                        <button className="btn btn-warning btn-sm">
-                          Edit
+                        <button 
+                          className="btn btn-warning btn-sm"
+                          onClick={() => handleEditUser(user)}
+                          disabled={actionLoading === user.id}
+                        >
+                          {actionLoading === user.id ? 'Editing...' : 'Edit'}
                         </button>
-                        <button className="btn btn-danger btn-sm">
-                          Delete
+                        <button 
+                          className="btn btn-danger btn-sm"
+                          onClick={() => handleDeleteUser(user.id)}
+                          disabled={actionLoading === user.id}
+                        >
+                          {actionLoading === user.id ? 'Deleting...' : 'Delete'}
                         </button>
                       </div>
                     </td>
@@ -221,49 +283,6 @@ const AdminUsers = () => {
             </table>
           </div>
         )}
-
-        {/* User Statistics by Role */}
-        <div className="card" style={{ marginTop: '2rem' }}>
-          <h3>User Statistics</h3>
-          <div className="row">
-            <div className="col-3">
-              <div style={{ textAlign: 'center' }}>
-                <h4>{getRoleCount('student')}</h4>
-                <p>Students</p>
-                <div style={{ fontSize: '0.8rem', color: '#666666' }}>
-                  {((getRoleCount('student') / users.length) * 100).toFixed(1)}% of total
-                </div>
-              </div>
-            </div>
-            <div className="col-3">
-              <div style={{ textAlign: 'center' }}>
-                <h4>{getRoleCount('institution')}</h4>
-                <p>Institutions</p>
-                <div style={{ fontSize: '0.8rem', color: '#666666' }}>
-                  {((getRoleCount('institution') / users.length) * 100).toFixed(1)}% of total
-                </div>
-              </div>
-            </div>
-            <div className="col-3">
-              <div style={{ textAlign: 'center' }}>
-                <h4>{getRoleCount('company')}</h4>
-                <p>Companies</p>
-                <div style={{ fontSize: '0.8rem', color: '#666666' }}>
-                  {((getRoleCount('company') / users.length) * 100).toFixed(1)}% of total
-                </div>
-              </div>
-            </div>
-            <div className="col-3">
-              <div style={{ textAlign: 'center' }}>
-                <h4>{getRoleCount('admin')}</h4>
-                <p>Admins</p>
-                <div style={{ fontSize: '0.8rem', color: '#666666' }}>
-                  {((getRoleCount('admin') / users.length) * 100).toFixed(1)}% of total
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );

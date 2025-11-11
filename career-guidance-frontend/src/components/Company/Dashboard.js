@@ -1,12 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getCompanyDashboard, getCompanyJobs } from '../../services/api';
+import { getCompanyDashboard, getCompanyJobs, getCompanyProfile, updateCompanyProfile } from '../../services/api';
 import Loading from '../Common/Loading';
 
 const CompanyDashboard = () => {
   const [dashboardData, setDashboardData] = useState(null);
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [profile, setProfile] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => {
     fetchDashboardData();
@@ -52,6 +57,66 @@ const CompanyDashboard = () => {
     }
   };
 
+  const fetchProfile = async () => {
+    try {
+      const response = await getCompanyProfile();
+      setProfile(response.data.company);
+    } catch (error) {
+      setError('Error loading profile');
+    }
+  };
+
+  const handleShowProfileModal = async () => {
+    setShowProfileModal(true);
+    setMessage('');
+    setError('');
+    await fetchProfile();
+  };
+
+  const handleCloseProfileModal = () => {
+    setShowProfileModal(false);
+    setProfile(null);
+  };
+
+  const handleProfileSubmit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setMessage('');
+    setError('');
+
+    try {
+      await updateCompanyProfile(profile);
+      setMessage('Profile updated successfully');
+      // Refresh dashboard data to show updated company name
+      fetchDashboardData();
+      setTimeout(() => {
+        setShowProfileModal(false);
+      }, 2000);
+    } catch (error) {
+      setError('Error updating profile');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleProfileChange = (e) => {
+    const { name, value } = e.target;
+    setProfile(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleContactInfoChange = (field, value) => {
+    setProfile(prev => ({
+      ...prev,
+      contactInfo: {
+        ...prev.contactInfo,
+        [field]: value
+      }
+    }));
+  };
+
   // Helper function to calculate stats from jobs data
   const calculateStats = (jobs) => {
     const jobsArray = jobs || [];
@@ -76,8 +141,18 @@ const CompanyDashboard = () => {
     <div className="container">
       {/* Welcome Section */}
       <div className="card">
-        <h1>Welcome, {company?.companyName || 'Your Company'}</h1>
-        <p>Company Management Dashboard</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h1>Welcome, {company?.companyName || 'Your Company'}</h1>
+            <p>Company Management Dashboard</p>
+          </div>
+          <button
+            className="btn btn-primary"
+            onClick={handleShowProfileModal}
+          >
+            Update Profile
+          </button>
+        </div>
         
         {!company?.approved && (
           <div className="alert alert-info">
@@ -199,6 +274,185 @@ const CompanyDashboard = () => {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Profile Update Modal */}
+      {showProfileModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '2rem',
+            borderRadius: '8px',
+            width: '90%',
+            maxWidth: '600px',
+            maxHeight: '90vh',
+            overflowY: 'auto'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h2>Update Company Profile</h2>
+              <button
+                onClick={handleCloseProfileModal}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '1.5rem',
+                  cursor: 'pointer',
+                  color: '#666'
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            {message && <div className="alert alert-success">{message}</div>}
+            {error && <div className="alert alert-error">{error}</div>}
+
+            {profile && (
+              <form onSubmit={handleProfileSubmit}>
+                <div className="form-group">
+                  <label className="form-label">Company Name</label>
+                  <input
+                    type="text"
+                    name="companyName"
+                    className="form-control"
+                    value={profile.companyName || ''}
+                    onChange={handleProfileChange}
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Industry</label>
+                  <select
+                    name="industry"
+                    className="form-select"
+                    value={profile.industry || ''}
+                    onChange={handleProfileChange}
+                    required
+                  >
+                    <option value="">Select Industry</option>
+                    <option value="Technology">Technology</option>
+                    <option value="Healthcare">Healthcare</option>
+                    <option value="Education">Education</option>
+                    <option value="Finance">Finance</option>
+                    <option value="Manufacturing">Manufacturing</option>
+                    <option value="Retail">Retail</option>
+                    <option value="Hospitality">Hospitality</option>
+                    <option value="Construction">Construction</option>
+                    <option value="Transportation">Transportation</option>
+                    <option value="Energy">Energy</option>
+                    <option value="Agriculture">Agriculture</option>
+                    <option value="Government">Government</option>
+                    <option value="Non-profit">Non-profit</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Description</label>
+                  <textarea
+                    name="description"
+                    className="form-control"
+                    value={profile.description || ''}
+                    onChange={handleProfileChange}
+                    rows="4"
+                    placeholder="Describe your company, mission, and values..."
+                  />
+                </div>
+
+                <div className="row">
+                  <div className="col-6">
+                    <div className="form-group">
+                      <label className="form-label">Contact Email</label>
+                      <input
+                        type="email"
+                        className="form-control"
+                        value={profile.contactInfo?.email || ''}
+                        onChange={(e) => handleContactInfoChange('email', e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="col-6">
+                    <div className="form-group">
+                      <label className="form-label">Phone Number</label>
+                      <input
+                        type="tel"
+                        className="form-control"
+                        value={profile.contactInfo?.phone || ''}
+                        onChange={(e) => handleContactInfoChange('phone', e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Website</label>
+                  <input
+                    type="url"
+                    name="website"
+                    className="form-control"
+                    value={profile.website || ''}
+                    onChange={handleProfileChange}
+                    placeholder="https://example.com"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Address</label>
+                  <textarea
+                    name="address"
+                    className="form-control"
+                    value={profile.address || ''}
+                    onChange={handleProfileChange}
+                    rows="3"
+                    placeholder="Company headquarters or main office address"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Logo URL</label>
+                  <input
+                    type="url"
+                    name="logoUrl"
+                    className="form-control"
+                    value={profile.logoUrl || ''}
+                    onChange={handleProfileChange}
+                    placeholder="https://example.com/logo.png"
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+                  <button 
+                    type="submit" 
+                    className="btn btn-primary" 
+                    disabled={saving}
+                  >
+                    {saving ? 'Saving...' : 'Update Profile'}
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary" 
+                    onClick={handleCloseProfileModal}
+                    disabled={saving}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

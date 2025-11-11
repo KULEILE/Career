@@ -147,7 +147,7 @@ const prospectusValidation = (data) => {
     institutionId: Joi.string().required(),
     fileUrl: Joi.string().uri().required(),
     fileName: Joi.string().required(),
-    fileSize: Joi.number().integer().min(1).max(10485760),
+    fileSize: Joi.number().integer().min(1).max(52428800),
     published: Joi.boolean().optional()
   });
   return schema.validate(data);

@@ -13,7 +13,6 @@ const Register = () => {
     role: 'student',
     // Single name field for institutions and companies
     organizationName: '',
-    adminSecret: '',
     // Student-specific fields
     dateOfBirth: '',
     phone: '',
@@ -335,12 +334,11 @@ const Register = () => {
       role: value,
       // Clear role-specific fields when changing roles
       organizationName: '',
-      //adminSecret: value !== 'admin' ? '' : prev.adminSecret,
-      //contactPhone: '',
-      //contactEmail: '',
-      //location: '',
-      //slogan: '',
-//description: ''
+      contactPhone: '',
+      contactEmail: '',
+      location: '',
+      slogan: '',
+      description: ''
     }));
   };
 
@@ -399,8 +397,8 @@ const Register = () => {
   const validateForm = () => {
     const errors = {};
 
-    // Basic validations - only require first/last name for student and admin roles
-    if (formData.role === 'student' || formData.role === 'admin') {
+    // Basic validations - only require first/last name for student role
+    if (formData.role === 'student') {
       if (!validateName(formData.firstName)) {
         errors.firstName = 'First name is required and can only contain letters';
       }
@@ -425,10 +423,6 @@ const Register = () => {
     // Role-specific validations
     if ((formData.role === 'institution' || formData.role === 'company') && !formData.organizationName) {
       errors.organizationName = `${formData.role === 'institution' ? 'Institution' : 'Company'} name is required`;
-    }
-
-    if (formData.role === 'admin' && !formData.adminSecret) {
-      errors.adminSecret = 'Admin secret key is required';
     }
 
     // Institution/Company contact requirements
@@ -489,14 +483,6 @@ const Register = () => {
       }
     }
 
-    // Admin secret validation
-    if (formData.role === 'admin' && formData.adminSecret) {
-      const validAdminSecret = process.env.REACT_APP_ADMIN_SECRET || 'admin123';
-      if (formData.adminSecret !== validAdminSecret) {
-        errors.adminSecret = 'Invalid admin secret key';
-      }
-    }
-
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -524,9 +510,6 @@ const Register = () => {
       
       // Redirect based on role
       switch (formData.role) {
-        case 'admin':
-          navigate('/admin/dashboard');
-          break;
         case 'institution':
           navigate('/institution/dashboard');
           break;
@@ -544,7 +527,7 @@ const Register = () => {
   };
 
   const hasErrors = Object.values(fieldErrors).some(error => error !== '');
-  const showPersonalNameFields = formData.role === 'student' || formData.role === 'admin';
+  const showPersonalNameFields = formData.role === 'student';
 
   return (
     <div className="container">
@@ -555,7 +538,7 @@ const Register = () => {
         <form onSubmit={handleSubmit}>
           {error && <div className="alert alert-error">{error}</div>}
           
-          {/* Only show first/last name fields for student and admin roles */}
+          {/* Only show first/last name fields for student role */}
           {showPersonalNameFields && (
             <div className="row">
               <div className="col-6">
@@ -631,7 +614,6 @@ const Register = () => {
               <option value="student">Student</option>
               <option value="institution">Institution</option>
               <option value="company">Company</option>
-              <option value="admin">Administrator</option>
             </select>
           </div>
 
@@ -656,29 +638,6 @@ const Register = () => {
                   {fieldErrors.organizationName}
                 </div>
               )}
-            </div>
-          )}
-
-          {formData.role === 'admin' && (
-            <div className="form-group">
-              <label className="form-label">Admin Secret Key *</label>
-              <input
-                type="password"
-                name="adminSecret"
-                className="form-control"
-                value={formData.adminSecret}
-                onChange={handleChange}
-                placeholder="Enter admin secret key"
-                required
-              />
-              {fieldErrors.adminSecret && (
-                <div style={{ color: '#dc3545', fontSize: '0.875rem', marginTop: '0.25rem' }}>
-                  {fieldErrors.adminSecret}
-                </div>
-              )}
-              <small style={{ color: '#666666' }}>
-                Contact system administrator to get the secret key
-              </small>
             </div>
           )}
 

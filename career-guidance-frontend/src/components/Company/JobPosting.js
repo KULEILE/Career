@@ -34,7 +34,7 @@ const JobPosting = () => {
     setApplicantsLoading(true);
     try {
       const response = await getJobApplicants(jobId);
-      setApplicants(response.data.applicants);
+      setApplicants(response.data.applicants || []);
       setShowApplicants(true);
       setActiveTab('all');
     } catch (error) {
@@ -48,7 +48,7 @@ const JobPosting = () => {
     setQualifiedLoading(true);
     try {
       const response = await getQualifiedApplicants(jobId);
-      setQualifiedApplicants(response.data.applicants);
+      setQualifiedApplicants(response.data.applicants || []);
       setShowQualified(true);
       setActiveTab('qualified');
     } catch (error) {
@@ -198,7 +198,7 @@ const JobPosting = () => {
             <h3>Job Information</h3>
             <div className="row">
               <div className="col-6">
-                <p><strong>Company:</strong> {job.company?.companyName}</p>
+                <p><strong>Company:</strong> {job.company?.companyName || job.companyName}</p>
                 <p><strong>Location:</strong> {job.location}</p>
                 <p><strong>Job Type:</strong> {job.jobType}</p>
               </div>
@@ -257,23 +257,27 @@ const JobPosting = () => {
               <p style={{ color: '#666666', whiteSpace: 'pre-wrap' }}>{job.description}</p>
             </div>
 
-            <div style={{ marginTop: '1rem' }}>
-              <strong>Requirements:</strong>
-              <ul>
-                {job.requirements?.map((req, idx) => (
-                  <li key={idx}>{req}</li>
-                ))}
-              </ul>
-            </div>
+            {job.requirements?.length > 0 && (
+              <div style={{ marginTop: '1rem' }}>
+                <strong>Requirements:</strong>
+                <ul>
+                  {job.requirements.map((req, idx) => (
+                    <li key={idx}>{req}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
-            <div style={{ marginTop: '1rem' }}>
-              <strong>Qualifications:</strong>
-              <ul>
-                {job.qualifications?.map((qual, idx) => (
-                  <li key={idx}>{qual}</li>
-                ))}
-              </ul>
-            </div>
+            {job.qualifications?.length > 0 && (
+              <div style={{ marginTop: '1rem' }}>
+                <strong>Qualifications:</strong>
+                <ul>
+                  {job.qualifications.map((qual, idx) => (
+                    <li key={idx}>{qual}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
 

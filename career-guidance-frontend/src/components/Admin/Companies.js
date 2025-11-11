@@ -64,6 +64,11 @@ const AdminCompanies = () => {
     }
   };
 
+  const handleViewDetails = (company) => {
+    // In a real implementation, this would open a modal or navigate to details page
+    alert(`Company Details:\nName: ${company.companyName}\nIndustry: ${company.industry}\nEmail: ${company.email}\nContact: ${company.firstName} ${company.lastName}`);
+  };
+
   if (loading) return <Loading message="Loading companies..." />;
 
   const pendingCompanies = companies.filter(company => !company.approved);
@@ -149,7 +154,10 @@ const AdminCompanies = () => {
                           >
                             Reject
                           </button>
-                          <button className="btn btn-info btn-sm">
+                          <button 
+                            className="btn btn-info btn-sm"
+                            onClick={() => handleViewDetails(company)}
+                          >
                             View
                           </button>
                         </div>
@@ -224,7 +232,10 @@ const AdminCompanies = () => {
                           >
                             {actionLoading === company.id ? 'Suspending...' : 'Suspend'}
                           </button>
-                          <button className="btn btn-info btn-sm">
+                          <button 
+                            className="btn btn-info btn-sm"
+                            onClick={() => handleViewDetails(company)}
+                          >
                             View Details
                           </button>
                         </div>
@@ -235,22 +246,6 @@ const AdminCompanies = () => {
               </table>
             </div>
           )}
-        </div>
-
-        {/* Quick Actions */}
-        <div className="card" style={{ marginTop: '2rem' }}>
-          <h3>Quick Actions</h3>
-          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-            <button className="btn btn-primary">
-              Export Companies List
-            </button>
-            <button className="btn btn-secondary">
-              Send Bulk Email
-            </button>
-            <button className="btn btn-info">
-              View Activity Log
-            </button>
-          </div>
         </div>
       </div>
     </div>

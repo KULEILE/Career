@@ -219,45 +219,97 @@ const applyForCourse = async (req, res) => {
 
 const uploadTranscript = async (req, res) => {
   try {
-    const { transcriptUrl } = req.body;
+    const { transcriptUrl, fileName, fileSize } = req.body;
     
     if (!transcriptUrl) {
       return res.status(400).json({ 
         success: false,
-        error: 'Transcript URL is required' 
+        error: 'Transcript file is required. Please upload a transcript file.' 
       });
     }
 
-    await db.collection('users').doc(req.user.uid).update({
-      transcriptUrl,
+    // Validate that it's a base64 string (simplified check)
+    if (typeof transcriptUrl !== 'string' || transcriptUrl.length < 100) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Invalid file data. Please upload a valid file.' 
+      });
+    }
+
+    const studentId = req.user.uid;
+    const studentDoc = await db.collection('users').doc(studentId).get();
+    
+    if (!studentDoc.exists) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Student not found' 
+      });
+    }
+
+    const student = studentDoc.data();
+
+    // Check if student has completed studies for final transcript
+    const isFinalTranscript = student.studyCompleted;
+    
+    // For base64 data, we need to handle it carefully in Firestore
+    // We'll store it as a string but be aware of size limitations
+    const updateData = {
+      transcriptData: transcriptUrl, // Store base64 data
+      transcriptFileName: fileName || 'Academic Transcript',
+      transcriptFileSize: fileSize || 0,
       hasTranscript: true,
       transcriptUploadedAt: new Date(),
+      transcriptVerified: false,
       updatedAt: new Date()
-    });
+    };
+
+    if (isFinalTranscript) {
+      updateData.finalTranscriptData = transcriptUrl;
+      updateData.finalTranscriptUploadedAt = new Date();
+    }
+
+    await db.collection('users').doc(studentId).update(updateData);
+
+    await NotificationService.createNotification(
+      studentId,
+      isFinalTranscript ? 'Final Transcript Uploaded' : 'Transcript Uploaded',
+      `Your ${isFinalTranscript ? 'final ' : ''}academic transcript has been uploaded successfully and is pending verification.`,
+      'info',
+      '/student/documents'
+    );
 
     res.json({ 
       success: true,
-      message: 'Transcript uploaded successfully',
-      hasTranscript: true
+      message: `${isFinalTranscript ? 'Final ' : ''}Transcript uploaded successfully`,
+      hasTranscript: true,
+      isFinalTranscript: isFinalTranscript
     });
   } catch (error) {
     console.error('Error uploading transcript:', error);
     res.status(500).json({ 
       success: false,
-      error: error.message 
+      error: error.message || 'Internal server error during transcript upload'
     });
   }
 };
 
 const uploadFinalTranscript = async (req, res) => {
   try {
-    const { transcriptUrl } = req.body;
+    const { transcriptUrl, fileName, fileSize } = req.body;
     const studentId = req.user.uid;
 
     if (!transcriptUrl) {
       return res.status(400).json({ 
         success: false,
-        error: 'Transcript URL is required' 
+        error: 'Transcript file is required. Please upload a transcript file.' 
+      });
+    }
+
+    // Validate that it's a base64 string
+    if (typeof transcriptUrl !== 'string' || transcriptUrl.length < 100) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Invalid file data. Please upload a valid file.' 
       });
     }
 
@@ -278,10 +330,12 @@ const uploadFinalTranscript = async (req, res) => {
     }
 
     await db.collection('users').doc(studentId).update({
-      transcriptUrl: transcriptUrl,
+      finalTranscriptData: transcriptUrl,
+      finalTranscriptFileName: fileName || 'Final Academic Transcript',
+      finalTranscriptFileSize: fileSize || 0,
       hasTranscript: true,
-      transcriptUploadedAt: new Date(),
       transcriptVerified: false,
+      finalTranscriptUploadedAt: new Date(),
       updatedAt: new Date()
     });
 
@@ -303,7 +357,7 @@ const uploadFinalTranscript = async (req, res) => {
     console.error('Error uploading final transcript:', error);
     res.status(500).json({ 
       success: false,
-      error: error.message 
+      error: error.message || 'Internal server error during final transcript upload'
     });
   }
 };
@@ -319,12 +373,37 @@ const uploadCertificate = async (req, res) => {
       });
     }
 
-    const studentDoc = await db.collection('users').doc(req.user.uid).get();
+    // Validate that it's a base64 string
+    if (typeof certificateUrl !== 'string' || certificateUrl.length < 100) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Invalid file data. Please upload a valid file.' 
+      });
+    }
+
+    const studentId = req.user.uid;
+    const studentDoc = await db.collection('users').doc(studentId).get();
+    
+    if (!studentDoc.exists) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Student not found' 
+      });
+    }
+
     const student = studentDoc.data();
     
+    // Check if student has completed studies for certificate upload
+    if (!student.studyCompleted) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'You must complete your studies before uploading certificates' 
+      });
+    }
+
     const newCertificate = {
       name: name || 'Certificate',
-      url: certificateUrl,
+      data: certificateUrl, // Store base64 data
       size: size || 0,
       verified: false,
       uploadedAt: new Date()
@@ -332,10 +411,18 @@ const uploadCertificate = async (req, res) => {
 
     const updatedCertificates = [...(student.certificates || []), newCertificate];
 
-    await db.collection('users').doc(req.user.uid).update({
+    await db.collection('users').doc(studentId).update({
       certificates: updatedCertificates,
       updatedAt: new Date()
     });
+
+    await NotificationService.createNotification(
+      studentId,
+      'Certificate Uploaded',
+      'Your certificate has been uploaded successfully and is pending verification.',
+      'info',
+      '/student/documents'
+    );
 
     res.json({ 
       success: true,
@@ -346,7 +433,7 @@ const uploadCertificate = async (req, res) => {
     console.error('Error uploading certificate:', error);
     res.status(500).json({ 
       success: false,
-      error: error.message 
+      error: error.message || 'Internal server error during certificate upload'
     });
   }
 };
@@ -613,7 +700,7 @@ const applyForJob = async (req, res) => {
         firstName: student.firstName,
         lastName: student.lastName,
         email: student.email,
-        transcriptUrl: student.transcriptUrl,
+        hasTranscript: student.hasTranscript,
         certificates: student.certificates
       }
     };
@@ -694,26 +781,42 @@ const getStudentDocuments = async (req, res) => {
     
     const documents = [];
     
-    if (student.transcriptUrl) {
+    // Add transcript document
+    if (student.transcriptData || student.hasTranscript) {
       documents.push({
         id: 'transcript',
         type: 'transcript',
-        fileName: 'Academic Transcript',
-        fileUrl: student.transcriptUrl,
-        fileSize: 0,
+        fileName: student.transcriptFileName || 'Academic Transcript',
+        fileUrl: student.transcriptData || '', // Use base64 data for viewing
+        fileSize: student.transcriptFileSize || 0,
         verified: student.transcriptVerified || false,
         uploadedAt: student.transcriptUploadedAt || student.updatedAt,
         createdAt: student.transcriptUploadedAt || student.updatedAt
       });
     }
     
+    // Add final transcript document
+    if (student.finalTranscriptData) {
+      documents.push({
+        id: 'final-transcript',
+        type: 'transcript',
+        fileName: student.finalTranscriptFileName || 'Final Academic Transcript',
+        fileUrl: student.finalTranscriptData || '', // Use base64 data for viewing
+        fileSize: student.finalTranscriptFileSize || 0,
+        verified: student.transcriptVerified || false,
+        uploadedAt: student.finalTranscriptUploadedAt || student.updatedAt,
+        createdAt: student.finalTranscriptUploadedAt || student.updatedAt
+      });
+    }
+    
+    // Add certificates
     if (student.certificates && Array.isArray(student.certificates)) {
       student.certificates.forEach((cert, index) => {
         documents.push({
           id: `certificate-${index}`,
           type: 'certificate',
           fileName: cert.name || `Certificate ${index + 1}`,
-          fileUrl: cert.url,
+          fileUrl: cert.data || '', // Use base64 data for viewing
           fileSize: cert.size || 0,
           verified: cert.verified || false,
           uploadedAt: cert.uploadedAt || student.updatedAt,
@@ -747,9 +850,18 @@ const deleteDocument = async (req, res) => {
     
     if (id === 'transcript') {
       updatedData = {
-        transcriptUrl: null,
+        transcriptData: null,
+        transcriptFileName: null,
+        transcriptFileSize: null,
         hasTranscript: false,
         transcriptVerified: false,
+        updatedAt: new Date()
+      };
+    } else if (id === 'final-transcript') {
+      updatedData = {
+        finalTranscriptData: null,
+        finalTranscriptFileName: null,
+        finalTranscriptFileSize: null,
         updatedAt: new Date()
       };
     } else if (id.startsWith('certificate-')) {

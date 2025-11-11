@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getInstitutions, approveCompany } from '../../services/api';
+import { getInstitutions, approveCompany, suspendCompany } from '../../services/api';
 import Loading from '../Common/Loading';
 
 const AdminInstitutions = () => {
@@ -30,7 +30,6 @@ const AdminInstitutions = () => {
     setError('');
 
     try {
-      // Using approveCompany endpoint for institutions as well (would need separate endpoint in real implementation)
       await approveCompany(institutionId);
       setMessage('Institution approved successfully');
       
@@ -51,8 +50,7 @@ const AdminInstitutions = () => {
     setError('');
 
     try {
-      // Using suspendCompany endpoint for institutions as well
-      await approveCompany(institutionId); // This would be suspendInstitution in real implementation
+      await suspendCompany(institutionId);
       setMessage('Institution suspended successfully');
       
       // Update local state
@@ -64,6 +62,11 @@ const AdminInstitutions = () => {
     } finally {
       setActionLoading(null);
     }
+  };
+
+  const handleViewDetails = (institution) => {
+    // In a real implementation, this would open a modal or navigate to details page
+    alert(`Institution Details:\nName: ${institution.institutionName}\nEmail: ${institution.email}\nContact: ${institution.firstName} ${institution.lastName}\nDescription: ${institution.description || 'No description'}`);
   };
 
   if (loading) return <Loading message="Loading institutions..." />;
@@ -149,7 +152,10 @@ const AdminInstitutions = () => {
                           >
                             Reject
                           </button>
-                          <button className="btn btn-info btn-sm">
+                          <button 
+                            className="btn btn-info btn-sm"
+                            onClick={() => handleViewDetails(institution)}
+                          >
                             View
                           </button>
                         </div>
@@ -216,7 +222,10 @@ const AdminInstitutions = () => {
                           >
                             {actionLoading === institution.id ? 'Suspending...' : 'Suspend'}
                           </button>
-                          <button className="btn btn-info btn-sm">
+                          <button 
+                            className="btn btn-info btn-sm"
+                            onClick={() => handleViewDetails(institution)}
+                          >
                             View Details
                           </button>
                         </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getStudentDocuments, uploadTranscript, uploadCertificate } from '../../services/api';
+import { getStudentDocuments, uploadTranscript, uploadCertificate, deleteDocument } from '../../services/api';
 import Loading from '../Common/Loading';
 
 const Transcripts = () => {
@@ -9,6 +9,7 @@ const Transcripts = () => {
   const [uploadType, setUploadType] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [deleting, setDeleting] = useState(null);
 
   useEffect(() => {
     fetchDocuments();
@@ -17,11 +18,10 @@ const Transcripts = () => {
   const fetchDocuments = async () => {
     try {
       const response = await getStudentDocuments();
-      // Ensure documents is always an array
       setDocuments(response.data.documents || []);
     } catch (error) {
       setError('Error loading documents');
-      setDocuments([]); // Set to empty array on error
+      setDocuments([]);
     } finally {
       setLoading(false);
     }
@@ -52,26 +52,117 @@ const Transcripts = () => {
     setError('');
 
     try {
-      const formData = new FormData();
-      
-      // Use the correct field names that the server expects
-      if (type === 'transcript') {
-        formData.append('transcript', file); // Server expects 'transcript'
-        await uploadTranscript(formData);
-        setMessage('Academic transcript uploaded successfully!');
-      } else {
-        formData.append('certificate', file); // Server expects 'certificate'
-        await uploadCertificate(formData);
-        setMessage('Certificate uploaded successfully!');
-      }
+      // Convert file to base64 for storage
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        try {
+          const base64File = event.target.result;
+          const fileName = file.name;
+          const fileSize = file.size;
 
-      fetchDocuments();
+          if (type === 'transcript') {
+            await uploadTranscript({
+              transcriptUrl: base64File,
+              fileName: fileName,
+              fileSize: fileSize
+            });
+            setMessage('Academic transcript uploaded successfully!');
+          } else {
+            await uploadCertificate({
+              certificateUrl: base64File,
+              name: fileName,
+              size: fileSize
+            });
+            setMessage('Certificate uploaded successfully!');
+          }
+
+          fetchDocuments();
+        } catch (uploadError) {
+          setError(uploadError.response?.data?.error || `Error uploading ${type}`);
+        } finally {
+          setUploading(false);
+          setUploadType('');
+          e.target.value = '';
+        }
+      };
+      
+      reader.onerror = () => {
+        setError('Error reading file');
+        setUploading(false);
+        setUploadType('');
+        e.target.value = '';
+      };
+      
+      reader.readAsDataURL(file);
+      
     } catch (error) {
-      setError(error.response?.data?.error || `Error uploading ${type}`);
-    } finally {
+      setError('Error processing file upload');
       setUploading(false);
       setUploadType('');
-      e.target.value = ''; // Reset file input
+      e.target.value = '';
+    }
+  };
+
+  const handleDeleteDocument = async (documentId, documentType, fileName) => {
+    if (!window.confirm(`Are you sure you want to delete "${fileName}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    setDeleting(documentId);
+    setMessage('');
+    setError('');
+
+    try {
+      await deleteDocument(documentId);
+      setMessage(`${documentType} deleted successfully!`);
+      
+      // Update local state immediately
+      setDocuments(prev => prev.filter(doc => doc.id !== documentId));
+      
+    } catch (error) {
+      setError(error.response?.data?.error || `Error deleting ${documentType}`);
+    } finally {
+      setDeleting(null);
+    }
+  };
+
+  const handleViewDocument = (document) => {
+    if (document.fileUrl) {
+      // If it's a base64 data URL, open in new tab
+      if (document.fileUrl.startsWith('data:')) {
+        const newWindow = window.open();
+        newWindow.document.write(`
+          <html>
+            <head>
+              <title>${document.fileName}</title>
+              <style>
+                body { margin: 0; padding: 20px; font-family: Arial, sans-serif; }
+                .container { max-width: 100%; text-align: center; }
+                img { max-width: 100%; height: auto; }
+                .pdf-view { width: 100%; height: 80vh; border: none; }
+                .info { margin-bottom: 20px; padding: 10px; background: #f8f9fa; border-radius: 4px; }
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <div class="info">
+                  <h3>${document.fileName}</h3>
+                  <p>Type: ${getDocumentTypeDisplay(document.type)} | Status: ${document.verified ? 'Verified' : 'Pending Review'}</p>
+                </div>
+                ${document.fileUrl.startsWith('data:application/pdf') 
+                  ? `<iframe src="${document.fileUrl}" class="pdf-view" title="${document.fileName}"></iframe>`
+                  : `<img src="${document.fileUrl}" alt="${document.fileName}" />`
+                }
+              </div>
+            </body>
+          </html>
+        `);
+      } else {
+        // If it's a regular URL, open in new tab
+        window.open(document.fileUrl, '_blank');
+      }
+    } else {
+      setError('Document URL not available');
     }
   };
 
@@ -87,11 +178,20 @@ const Transcripts = () => {
     return verified ? '#28a745' : '#ffc107';
   };
 
+  const getDocumentTypeColor = (type) => {
+    switch (type) {
+      case 'transcript': return '#17a2b8';
+      case 'certificate': return '#28a745';
+      default: return '#6c757d';
+    }
+  };
+
   if (loading) return <Loading message="Loading documents..." />;
 
-  // Ensure documents is always treated as an array
   const documentsArray = Array.isArray(documents) ? documents : [];
   const hasTranscript = documentsArray.some(doc => doc.type === 'transcript' && doc.verified);
+  const transcriptCount = documentsArray.filter(doc => doc.type === 'transcript').length;
+  const certificateCount = documentsArray.filter(doc => doc.type === 'certificate').length;
 
   return (
     <div className="container">
@@ -139,6 +239,11 @@ const Transcripts = () => {
                 <small style={{ color: '#666666' }}>
                   Supported formats: PDF, JPG, PNG (Max 5MB)
                 </small>
+                {transcriptCount > 0 && (
+                  <div style={{ marginTop: '1rem', fontSize: '0.9rem', color: '#17a2b8' }}>
+                    {transcriptCount} transcript(s) uploaded
+                  </div>
+                )}
               </div>
             </div>
 
@@ -171,10 +276,39 @@ const Transcripts = () => {
                 <small style={{ color: '#666666' }}>
                   Supported formats: PDF, JPG, PNG (Max 5MB)
                 </small>
+                {certificateCount > 0 && (
+                  <div style={{ marginTop: '1rem', fontSize: '0.9rem', color: '#28a745' }}>
+                    {certificateCount} certificate(s) uploaded
+                  </div>
+                )}
               </div>
             </div>
           </div>
         </div>
+
+        {/* Documents Statistics */}
+        {documentsArray.length > 0 && (
+          <div className="row" style={{ marginBottom: '2rem' }}>
+            <div className="col-4">
+              <div className="card" style={{ textAlign: 'center' }}>
+                <h3>{documentsArray.length}</h3>
+                <p>Total Documents</p>
+              </div>
+            </div>
+            <div className="col-4">
+              <div className="card" style={{ textAlign: 'center' }}>
+                <h3>{documentsArray.filter(doc => doc.verified).length}</h3>
+                <p>Verified</p>
+              </div>
+            </div>
+            <div className="col-4">
+              <div className="card" style={{ textAlign: 'center' }}>
+                <h3>{documentsArray.filter(doc => !doc.verified).length}</h3>
+                <p>Pending Review</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Documents List */}
         <h3>Your Documents ({documentsArray.length})</h3>
@@ -191,6 +325,7 @@ const Transcripts = () => {
                   <th>Document Type</th>
                   <th>File Name</th>
                   <th>Upload Date</th>
+                  <th>File Size</th>
                   <th>Status</th>
                   <th>Actions</th>
                 </tr>
@@ -199,11 +334,28 @@ const Transcripts = () => {
                 {documentsArray.map(document => (
                   <tr key={document.id}>
                     <td>
-                      <strong>{getDocumentTypeDisplay(document.type)}</strong>
+                      <strong style={{ color: getDocumentTypeColor(document.type) }}>
+                        {getDocumentTypeDisplay(document.type)}
+                      </strong>
                     </td>
-                    <td>{document.fileName}</td>
+                    <td>
+                      <div>
+                        <strong>{document.fileName}</strong>
+                        {document.fileSize > 0 && (
+                          <div style={{ fontSize: '0.8rem', color: '#666666' }}>
+                            {(document.fileSize / 1024 / 1024).toFixed(2)} MB
+                          </div>
+                        )}
+                      </div>
+                    </td>
                     <td>
                       {document.uploadedAt ? new Date(document.uploadedAt).toLocaleDateString() : 'N/A'}
+                    </td>
+                    <td>
+                      {document.fileSize > 0 ? 
+                        `${(document.fileSize / 1024 / 1024).toFixed(2)} MB` : 
+                        'N/A'
+                      }
                     </td>
                     <td>
                       <span 
@@ -219,20 +371,26 @@ const Transcripts = () => {
                       </span>
                     </td>
                     <td>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <a
-                          href={document.fileUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <button
                           className="btn btn-primary btn-sm"
+                          onClick={() => handleViewDocument(document)}
+                          disabled={!document.fileUrl}
+                          title="View Document"
                         >
                           View
-                        </a>
+                        </button>
                         <button
                           className="btn btn-danger btn-sm"
-                          onClick={() => {/* Add delete functionality */}}
+                          onClick={() => handleDeleteDocument(
+                            document.id, 
+                            getDocumentTypeDisplay(document.type), 
+                            document.fileName
+                          )}
+                          disabled={deleting === document.id}
+                          title="Delete Document"
                         >
-                          Delete
+                          {deleting === document.id ? 'Deleting...' : 'Delete'}
                         </button>
                       </div>
                     </td>
@@ -240,6 +398,41 @@ const Transcripts = () => {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Quick Actions */}
+        {documentsArray.length > 0 && (
+          <div className="card" style={{ marginTop: '2rem' }}>
+            <h4>Quick Actions</h4>
+            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  const unverifiedDocs = documentsArray.filter(doc => !doc.verified);
+                  if (unverifiedDocs.length > 0) {
+                    alert(`You have ${unverifiedDocs.length} document(s) pending verification. They will be reviewed by administrators within 2-3 business days.`);
+                  } else {
+                    alert('All your documents have been verified!');
+                  }
+                }}
+              >
+                Check Verification Status
+              </button>
+              <button
+                className="btn btn-info"
+                onClick={() => {
+                  const hasUnverified = documentsArray.some(doc => !doc.verified);
+                  if (hasUnverified) {
+                    alert('Some of your documents are still pending verification. Verified documents are required for job applications and enhanced course recommendations.');
+                  } else {
+                    alert('All your documents are verified! You can now apply for jobs and get better course recommendations.');
+                  }
+                }}
+              >
+                Document Benefits
+              </button>
+            </div>
           </div>
         )}
 
@@ -252,7 +445,33 @@ const Transcripts = () => {
             <li><strong>Verification:</strong> Documents are reviewed by administrators (usually within 2-3 business days)</li>
             <li><strong>Privacy:</strong> Your documents are securely stored and only shared with institutions/companies you apply to</li>
             <li><strong>Job Opportunities:</strong> Verified transcripts unlock job matching and application features</li>
+            <li><strong>Deletion:</strong> You can delete uploaded documents at any time. Deleted documents cannot be recovered.</li>
           </ul>
+        </div>
+
+        {/* Document Tips */}
+        <div className="card" style={{ marginTop: '1rem', backgroundColor: '#f8f9fa' }}>
+          <h5>Document Tips</h5>
+          <div className="row">
+            <div className="col-6">
+              <strong>For Best Results:</strong>
+              <ul style={{ fontSize: '0.9rem', marginBottom: 0 }}>
+                <li>Ensure documents are clear and readable</li>
+                <li>Upload high-quality scans or photos</li>
+                <li>Keep file sizes under 5MB</li>
+                <li>Use PDF format for multi-page documents</li>
+              </ul>
+            </div>
+            <div className="col-6">
+              <strong>Verification Process:</strong>
+              <ul style={{ fontSize: '0.9rem', marginBottom: 0 }}>
+                <li>Documents are verified within 2-3 business days</li>
+                <li>You'll receive notifications when verified</li>
+                <li>Verified documents unlock additional features</li>
+                <li>Contact support if verification takes longer</li>
+              </ul>
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -8,29 +8,50 @@ const getCompanyProfile = async (req, res) => {
       return res.status(404).json({ error: 'Company not found' });
     }
 
-    res.json({ company: companyDoc.data() });
+    const companyData = companyDoc.data();
+    
+    res.json({ 
+      company: {
+        ...companyData,
+        approved: companyData.approved !== false
+      }
+    });
   } catch (error) {
+    console.error('Error in getCompanyProfile:', error);
     res.status(500).json({ error: error.message });
   }
 };
 
 const updateCompanyProfile = async (req, res) => {
   try {
-    const { companyName, description, industry, contactInfo, address, logoUrl, website } = req.body;
+    const { 
+      companyName, 
+      description, 
+      industry, 
+      contactInfo, 
+      address, 
+      logoUrl, 
+      website 
+    } = req.body;
     
-    await db.collection('users').doc(req.user.uid).update({
-      companyName,
-      description,
-      industry,
-      contactInfo,
-      address,
-      logoUrl,
-      website,
+    const updateData = {
       updatedAt: new Date()
-    });
+    };
+
+    // Only update fields that are provided
+    if (companyName !== undefined) updateData.companyName = companyName;
+    if (description !== undefined) updateData.description = description;
+    if (industry !== undefined) updateData.industry = industry;
+    if (contactInfo !== undefined) updateData.contactInfo = contactInfo;
+    if (address !== undefined) updateData.address = address;
+    if (logoUrl !== undefined) updateData.logoUrl = logoUrl;
+    if (website !== undefined) updateData.website = website;
+
+    await db.collection('users').doc(req.user.uid).update(updateData);
 
     res.json({ message: 'Profile updated successfully' });
   } catch (error) {
+    console.error('Error in updateCompanyProfile:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -52,30 +73,30 @@ const createJob = async (req, res) => {
       requiredSkills
     } = req.body;
     
-    // Get company name from profile if not available in req.user
-    let companyName = req.user.companyName;
-    if (!companyName) {
-      const companyDoc = await db.collection('users').doc(req.user.uid).get();
-      if (companyDoc.exists) {
-        companyName = companyDoc.data().companyName;
-      }
+    // Get company name from profile
+    const companyDoc = await db.collection('users').doc(req.user.uid).get();
+    if (!companyDoc.exists) {
+      return res.status(404).json({ error: 'Company not found' });
     }
     
+    const companyData = companyDoc.data();
+    const companyName = companyData.companyName || 'Unknown Company';
+    
     const jobData = {
-      title,
-      description,
-      requirements: requirements.filter(req => req.trim() !== ''),
-      qualifications: qualifications.filter(qual => qual.trim() !== ''),
-      location,
-      salary,
-      jobType,
-      deadline: new Date(deadline),
-      minAcademicScore: minAcademicScore || 0,
-      requiredCertificates: requiredCertificates || [],
-      minWorkExperience: minWorkExperience || 0,
-      requiredSkills: requiredSkills || [],
+      title: title || '',
+      description: description || '',
+      requirements: Array.isArray(requirements) ? requirements.filter(req => req.trim() !== '') : [],
+      qualifications: Array.isArray(qualifications) ? qualifications.filter(qual => qual.trim() !== '') : [],
+      location: location || '',
+      salary: salary || '',
+      jobType: jobType || 'full-time',
+      deadline: deadline ? new Date(deadline) : new Date(),
+      minAcademicScore: minAcademicScore ? parseInt(minAcademicScore) : 0,
+      requiredCertificates: Array.isArray(requiredCertificates) ? requiredCertificates.filter(cert => cert.trim() !== '') : [],
+      minWorkExperience: minWorkExperience ? parseInt(minWorkExperience) : 0,
+      requiredSkills: Array.isArray(requiredSkills) ? requiredSkills.filter(skill => skill.trim() !== '') : [],
       companyId: req.user.uid,
-      companyName: companyName || 'Unknown Company',
+      companyName: companyName,
       createdAt: new Date(),
       updatedAt: new Date(),
       active: true,
@@ -96,19 +117,13 @@ const createJob = async (req, res) => {
 
 const getJobs = async (req, res) => {
   try {
-    console.log('Fetching jobs for company:', req.user.uid);
-    
-    // Remove orderBy to avoid Firebase index issues - we'll sort manually
     const jobsSnapshot = await db.collection('jobs')
       .where('companyId', '==', req.user.uid)
       .get();
 
-    console.log('Found jobs:', jobsSnapshot.size);
-    
     const jobs = [];
     jobsSnapshot.forEach(doc => {
       const jobData = doc.data();
-      // Convert Firestore timestamps to JavaScript dates
       const processedJob = {
         id: doc.id,
         ...jobData,
@@ -124,12 +139,7 @@ const getJobs = async (req, res) => {
 
     res.json({ jobs });
   } catch (error) {
-    console.error('Error in getJobs:', {
-      message: error.message,
-      code: error.code,
-      stack: error.stack
-    });
-    
+    console.error('Error in getJobs:', error);
     res.status(500).json({ 
       error: 'Failed to fetch jobs',
       details: error.message 
@@ -168,7 +178,19 @@ const getApplicants = async (req, res) => {
         applicants.push({
           id: doc.id,
           ...application,
-          student: student,
+          student: {
+            firstName: student.firstName || '',
+            lastName: student.lastName || '',
+            email: student.email || '',
+            phone: student.phone || '',
+            highSchool: student.highSchool || '',
+            academicScore: student.academicScore || 0,
+            workExperience: student.workExperience || 0,
+            certificates: student.certificates || [],
+            skills: student.skills || [],
+            hasTranscript: student.hasTranscript || false,
+            transcriptUrl: student.transcriptUrl || ''
+          },
           matchScore: matchScore,
           interviewReady: matchScore >= 70
         });
@@ -218,7 +240,19 @@ const getQualifiedApplicants = async (req, res) => {
           qualifiedApplicants.push({
             id: doc.id,
             ...application,
-            student: student,
+            student: {
+              firstName: student.firstName || '',
+              lastName: student.lastName || '',
+              email: student.email || '',
+              phone: student.phone || '',
+              highSchool: student.highSchool || '',
+              academicScore: student.academicScore || 0,
+              workExperience: student.workExperience || 0,
+              certificates: student.certificates || [],
+              skills: student.skills || [],
+              hasTranscript: student.hasTranscript || false,
+              transcriptUrl: student.transcriptUrl || ''
+            },
             matchScore: matchScore,
             interviewReady: true
           });
@@ -245,7 +279,12 @@ const getInterviewReadyCandidates = async (req, res) => {
 
     const jobs = [];
     jobsSnapshot.forEach(doc => {
-      jobs.push({ id: doc.id, ...doc.data() });
+      jobs.push({ 
+        id: doc.id, 
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate() : doc.data().createdAt,
+        deadline: doc.data().deadline?.toDate ? doc.data().deadline.toDate() : doc.data().deadline
+      });
     });
 
     // Get all job applications for this company
@@ -272,8 +311,26 @@ const getInterviewReadyCandidates = async (req, res) => {
               interviewReadyCandidates.push({
                 id: doc.id,
                 ...application,
-                student: student,
-                job: job,
+                student: {
+                  firstName: student.firstName || '',
+                  lastName: student.lastName || '',
+                  email: student.email || '',
+                  phone: student.phone || '',
+                  highSchool: student.highSchool || '',
+                  academicScore: student.academicScore || 0,
+                  workExperience: student.workExperience || 0,
+                  certificates: student.certificates || [],
+                  skills: student.skills || [],
+                  hasTranscript: student.hasTranscript || false,
+                  transcriptUrl: student.transcriptUrl || '',
+                  subjects: student.subjects || []
+                },
+                job: {
+                  id: job.id,
+                  title: job.title || '',
+                  location: job.location || '',
+                  jobType: job.jobType || ''
+                },
                 matchScore: matchScore,
                 interviewReady: true
               });
@@ -309,7 +366,12 @@ const getCompanyDashboard = async (req, res) => {
 
     const jobs = [];
     jobsSnapshot.forEach(doc => {
-      jobs.push({ id: doc.id, ...doc.data() });
+      jobs.push({ 
+        id: doc.id, 
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate() : doc.data().createdAt,
+        deadline: doc.data().deadline?.toDate ? doc.data().deadline.toDate() : doc.data().deadline
+      });
     });
 
     // Get all job applications for this company
@@ -335,8 +397,14 @@ const getCompanyDashboard = async (req, res) => {
             const candidateData = {
               id: doc.id,
               ...application,
-              student: student,
-              job: job,
+              student: {
+                firstName: student.firstName || '',
+                lastName: student.lastName || '',
+                email: student.email || ''
+              },
+              job: {
+                title: job.title || ''
+              },
               matchScore: matchScore,
               interviewReady: matchScore >= 70
             };
@@ -379,7 +447,10 @@ const getCompanyDashboard = async (req, res) => {
       }));
 
     res.json({
-      company,
+      company: {
+        ...company,
+        approved: company.approved !== false
+      },
       stats,
       recentCandidates
     });

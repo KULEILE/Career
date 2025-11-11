@@ -107,10 +107,19 @@ export const suspendInstitution = (institutionId) => api.put(`/admin/institution
 export const approveCompany = (companyId) => api.put(`/admin/companies/${companyId}/approve`);
 export const suspendCompany = (companyId) => api.put(`/admin/companies/${companyId}/suspend`);
 export const getUsers = () => api.get('/admin/users');
-export const getReports = (type) => api.get(`/admin/reports?type=${type}`);
+export const getReports = (type, startDate = '', endDate = '') => {
+  let url = `/admin/reports?type=${type}`;
+  if (startDate) url += `&startDate=${startDate}`;
+  if (endDate) url += `&endDate=${endDate}`;
+  return api.get(url);
+};
 export const getPendingDocuments = () => api.get('/admin/documents/pending');
 export const verifyDocument = (documentId, data) => api.put(`/admin/documents/${documentId}/verify`, data);
 export const rejectDocument = (documentId, data) => api.put(`/admin/documents/${documentId}/reject`, data);
+
+// -------------------- Admin User Management API --------------------
+export const updateUser = (userId, userData) => api.put(`/admin/users/${userId}`, userData);
+export const deleteUser = (userId) => api.delete(`/admin/users/${userId}`);
 
 // -------------------- Public API --------------------
 export const getAllCourses = () => api.get('/courses');
@@ -133,6 +142,9 @@ export const getApplicationStats = () => api.get('/students/applications/stats')
 // -------------------- File Upload with Progress --------------------
 export const uploadFileWithProgress = (url, formData, onUploadProgress) =>
   api.post(url, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
     onUploadProgress: (progressEvent) => {
       if (onUploadProgress) {
         const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);

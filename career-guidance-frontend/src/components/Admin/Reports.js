@@ -10,6 +10,7 @@ const AdminReports = () => {
     start: '',
     end: ''
   });
+  const [error, setError] = useState('');
 
   useEffect(() => {
     fetchReports();
@@ -17,48 +18,89 @@ const AdminReports = () => {
 
   const fetchReports = async () => {
     try {
-      const response = await getReports(selectedReport);
-      setReports(response.data.report);
+      setLoading(true);
+      setError('');
+      const response = await getReports(selectedReport, dateRange.start, dateRange.end);
+      setReports(response.data.report || {});
     } catch (error) {
       console.error('Error loading reports:', error);
+      setError('Failed to load reports. Please try again.');
+      setReports({});
     } finally {
       setLoading(false);
     }
   };
 
   const handleDateRangeChange = () => {
-    // In a real implementation, this would filter the reports by date range
-    console.log('Date range changed:', dateRange);
     fetchReports();
   };
 
-  const generateApplicationStats = () => {
-    // Mock data for demonstration
+  const handleReportTypeChange = (reportType) => {
+    setSelectedReport(reportType);
+  };
+
+  // Process application statistics data
+  const getApplicationStats = () => {
+    if (selectedReport === 'applications' && reports) {
+      return {
+        pending: reports.pending || 0,
+        admitted: reports.admitted || 0,
+        rejected: reports.rejected || 0,
+        waitlisted: reports.waitlisted || 0,
+        accepted: reports.accepted || 0,
+        total: (reports.pending || 0) + (reports.admitted || 0) + (reports.rejected || 0) + 
+               (reports.waitlisted || 0) + (reports.accepted || 0)
+      };
+    }
     return {
-      pending: 45,
-      admitted: 120,
-      rejected: 85,
-      waitlisted: 23,
-      accepted: 78
+      pending: 0,
+      admitted: 0,
+      rejected: 0,
+      waitlisted: 0,
+      accepted: 0,
+      total: 0
     };
   };
 
-  const generateUserGrowth = () => {
-    // Mock data for demonstration
-    return [
-      { month: 'Jan', students: 150, institutions: 5, companies: 8 },
-      { month: 'Feb', students: 230, institutions: 7, companies: 12 },
-      { month: 'Mar', students: 350, institutions: 10, companies: 15 },
-      { month: 'Apr', students: 480, institutions: 12, companies: 18 },
-      { month: 'May', students: 620, institutions: 15, companies: 22 },
-      { month: 'Jun', students: 780, institutions: 18, companies: 25 }
-    ];
+  // Process user growth data
+  const getUserGrowthData = () => {
+    if (selectedReport === 'users' && Array.isArray(reports)) {
+      return reports;
+    }
+    return [];
+  };
+
+  // Process institution performance data
+  const getInstitutionPerformance = () => {
+    if (selectedReport === 'institutions' && reports) {
+      return reports;
+    }
+    return {};
+  };
+
+  // Process company engagement data
+  const getCompanyEngagement = () => {
+    if (selectedReport === 'companies' && reports) {
+      return reports;
+    }
+    return {};
+  };
+
+  // Process system usage data
+  const getSystemUsage = () => {
+    if (selectedReport === 'system' && reports) {
+      return reports;
+    }
+    return {};
   };
 
   if (loading) return <Loading message="Generating reports..." />;
 
-  const applicationStats = generateApplicationStats();
-  const userGrowth = generateUserGrowth();
+  const applicationStats = getApplicationStats();
+  const userGrowth = getUserGrowthData();
+  const institutionPerformance = getInstitutionPerformance();
+  const companyEngagement = getCompanyEngagement();
+  const systemUsage = getSystemUsage();
 
   return (
     <div className="container">
@@ -67,6 +109,12 @@ const AdminReports = () => {
           <h2 className="card-title">System Reports & Analytics</h2>
           <p>Comprehensive system analytics and reporting</p>
         </div>
+
+        {error && (
+          <div className="alert alert-error" style={{ margin: '1rem' }}>
+            {error}
+          </div>
+        )}
 
         {/* Report Selection */}
         <div className="card" style={{ marginBottom: '2rem' }}>
@@ -78,7 +126,7 @@ const AdminReports = () => {
                 <select
                   className="form-select"
                   value={selectedReport}
-                  onChange={(e) => setSelectedReport(e.target.value)}
+                  onChange={(e) => handleReportTypeChange(e.target.value)}
                 >
                   <option value="applications">Application Statistics</option>
                   <option value="users">User Growth</option>
@@ -157,21 +205,9 @@ const AdminReports = () => {
               </div>
               <div className="col-2">
                 <div className="card" style={{ textAlign: 'center', backgroundColor: '#6c757d' }}>
-                  <h4>{Object.values(applicationStats).reduce((a, b) => a + b, 0)}</h4>
+                  <h4>{applicationStats.total}</h4>
                   <p>Total</p>
                 </div>
-              </div>
-            </div>
-
-            <div className="card">
-              <h4>Application Trends</h4>
-              <div style={{ padding: '2rem', textAlign: 'center', backgroundColor: '#f8f9fa', borderRadius: '4px' }}>
-                <p style={{ color: '#666666' }}>
-                  Application trends chart would be displayed here in a real implementation.
-                </p>
-                <p style={{ fontSize: '0.9rem', color: '#999' }}>
-                  This would typically show monthly application volumes, admission rates, and other key metrics.
-                </p>
               </div>
             </div>
           </div>
@@ -183,60 +219,171 @@ const AdminReports = () => {
             <h3>User Growth Analytics</h3>
             <div className="card">
               <h4>Monthly User Registration</h4>
-              <div className="table-responsive">
-                <table className="table table-striped">
-                  <thead>
-                    <tr>
-                      <th>Month</th>
-                      <th>Students</th>
-                      <th>Institutions</th>
-                      <th>Companies</th>
-                      <th>Total</th>
-                      <th>Growth Rate</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {userGrowth.map((data, index) => {
-                      const total = data.students + data.institutions + data.companies;
-                      const prevTotal = index > 0 ? 
-                        userGrowth[index-1].students + userGrowth[index-1].institutions + userGrowth[index-1].companies : 
-                        total;
-                      const growthRate = index > 0 ? ((total - prevTotal) / prevTotal * 100).toFixed(1) : '-';
-                      
-                      return (
-                        <tr key={data.month}>
-                          <td><strong>{data.month}</strong></td>
-                          <td>{data.students}</td>
-                          <td>{data.institutions}</td>
-                          <td>{data.companies}</td>
-                          <td><strong>{total}</strong></td>
-                          <td>
-                            <span style={{
-                              color: growthRate === '-' || parseFloat(growthRate) >= 0 ? '#28a745' : '#dc3545',
-                              fontWeight: 'bold'
-                            }}>
-                              {growthRate === '-' ? '-' : `${growthRate}%`}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              {userGrowth.length > 0 ? (
+                <div className="table-responsive">
+                  <table className="table table-striped">
+                    <thead>
+                      <tr>
+                        <th>Month</th>
+                        <th>Students</th>
+                        <th>Institutions</th>
+                        <th>Companies</th>
+                        <th>Total</th>
+                        <th>Growth Rate</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {userGrowth.map((data, index) => {
+                        const total = (data.students || 0) + (data.institutions || 0) + (data.companies || 0);
+                        const prevTotal = index > 0 ? 
+                          (userGrowth[index-1].students || 0) + (userGrowth[index-1].institutions || 0) + (userGrowth[index-1].companies || 0) : 
+                          total;
+                        const growthRate = index > 0 ? ((total - prevTotal) / prevTotal * 100).toFixed(1) : '-';
+                        
+                        return (
+                          <tr key={data.month || index}>
+                            <td><strong>{data.month || `Month ${index + 1}`}</strong></td>
+                            <td>{data.students || 0}</td>
+                            <td>{data.institutions || 0}</td>
+                            <td>{data.companies || 0}</td>
+                            <td><strong>{total}</strong></td>
+                            <td>
+                              <span style={{
+                                color: growthRate === '-' || parseFloat(growthRate) >= 0 ? '#28a745' : '#dc3545',
+                                fontWeight: 'bold'
+                              }}>
+                                {growthRate === '-' ? '-' : `${growthRate}%`}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="alert alert-info">
+                  No user growth data available for the selected period.
+                </div>
+              )}
             </div>
+          </div>
+        )}
 
-            <div className="card" style={{ marginTop: '2rem' }}>
-              <h4>User Distribution</h4>
-              <div style={{ padding: '2rem', textAlign: 'center', backgroundColor: '#f8f9fa', borderRadius: '4px' }}>
-                <p style={{ color: '#666666' }}>
-                  User distribution pie chart would be displayed here.
-                </p>
-                <p style={{ fontSize: '0.9rem', color: '#999' }}>
-                  Showing percentage distribution between students, institutions, and companies.
-                </p>
+        {/* Institution Performance Report */}
+        {selectedReport === 'institutions' && (
+          <div>
+            <h3>Institution Performance</h3>
+            {Object.keys(institutionPerformance).length > 0 ? (
+              <div className="card">
+                <div className="table-responsive">
+                  <table className="table table-striped">
+                    <thead>
+                      <tr>
+                        <th>Institution</th>
+                        <th>Courses</th>
+                        <th>Applications</th>
+                        <th>Admission Rate</th>
+                        <th>Active Students</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(institutionPerformance).map(([institutionName, data], index) => (
+                        <tr key={institutionName || index}>
+                          <td><strong>{institutionName}</strong></td>
+                          <td>{data.courses || 0}</td>
+                          <td>{data.applications || 0}</td>
+                          <td>{data.admissionRate ? `${data.admissionRate}%` : 'N/A'}</td>
+                          <td>{data.activeStudents || 0}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="alert alert-info">
+                No institution performance data available.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Company Engagement Report */}
+        {selectedReport === 'companies' && (
+          <div>
+            <h3>Company Engagement</h3>
+            {Object.keys(companyEngagement).length > 0 ? (
+              <div className="card">
+                <div className="table-responsive">
+                  <table className="table table-striped">
+                    <thead>
+                      <tr>
+                        <th>Company</th>
+                        <th>Jobs Posted</th>
+                        <th>Applications</th>
+                        <th>Hires</th>
+                        <th>Engagement Rate</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(companyEngagement).map(([companyName, data], index) => (
+                        <tr key={companyName || index}>
+                          <td><strong>{companyName}</strong></td>
+                          <td>{data.jobsPosted || 0}</td>
+                          <td>{data.applications || 0}</td>
+                          <td>{data.hires || 0}</td>
+                          <td>{data.engagementRate ? `${data.engagementRate}%` : 'N/A'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <div className="alert alert-info">
+                No company engagement data available.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* System Usage Report */}
+        {selectedReport === 'system' && (
+          <div>
+            <h3>System Usage Statistics</h3>
+            {Object.keys(systemUsage).length > 0 ? (
+              <div className="row" style={{ marginBottom: '2rem' }}>
+                <div className="col-3">
+                  <div className="card" style={{ textAlign: 'center', backgroundColor: '#17a2b8' }}>
+                    <h4>{systemUsage.totalUsers || 0}</h4>
+                    <p>Total Users</p>
+                  </div>
+                </div>
+                <div className="col-3">
+                  <div className="card" style={{ textAlign: 'center', backgroundColor: '#28a745' }}>
+                    <h4>{systemUsage.activeUsers || 0}</h4>
+                    <p>Active Users (30 days)</p>
+                  </div>
+                </div>
+                <div className="col-3">
+                  <div className="card" style={{ textAlign: 'center', backgroundColor: '#ffc107' }}>
+                    <h4>{systemUsage.totalApplications || 0}</h4>
+                    <p>Total Applications</p>
+                  </div>
+                </div>
+                <div className="col-3">
+                  <div className="card" style={{ textAlign: 'center', backgroundColor: '#dc3545' }}>
+                    <h4>{systemUsage.systemUptime ? `${systemUsage.systemUptime}%` : 'N/A'}</h4>
+                    <p>System Uptime</p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="alert alert-info">
+                No system usage data available.
+              </div>
+            )}
           </div>
         )}
 
@@ -253,52 +400,6 @@ const AdminReports = () => {
             <button className="btn btn-info">
               Print Report
             </button>
-            <button className="btn btn-secondary">
-              Schedule Automated Report
-            </button>
-          </div>
-        </div>
-
-        {/* Key Metrics */}
-        <div className="card" style={{ marginTop: '2rem' }}>
-          <h3>Key Performance Indicators</h3>
-          <div className="row">
-            <div className="col-3">
-              <div style={{ textAlign: 'center' }}>
-                <h4>78%</h4>
-                <p>Admission Rate</p>
-                <div style={{ fontSize: '0.8rem', color: '#28a745' }}>
-                  ↑ 5% from last month
-                </div>
-              </div>
-            </div>
-            <div className="col-3">
-              <div style={{ textAlign: 'center' }}>
-                <h4>2.3</h4>
-                <p>Avg. Applications per Student</p>
-                <div style={{ fontSize: '0.8rem', color: '#17a2b8' }}>
-                  → Stable
-                </div>
-              </div>
-            </div>
-            <div className="col-3">
-              <div style={{ textAlign: 'center' }}>
-                <h4>45%</h4>
-                <p>Job Application Rate</p>
-                <div style={{ fontSize: '0.8rem', color: '#ffc107' }}>
-                  ↑ 12% from last month
-                </div>
-              </div>
-            </div>
-            <div className="col-3">
-              <div style={{ textAlign: 'center' }}>
-                <h4>92%</h4>
-                <p>System Uptime</p>
-                <div style={{ fontSize: '0.8rem', color: '#dc3545' }}>
-                  ↓ 2% from last month
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </div>
