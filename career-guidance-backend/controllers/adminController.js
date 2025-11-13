@@ -1,6 +1,5 @@
-const { db, admin } = require('../config/firebase'); // Firebase Admin SDK for timestamps
+const { db, admin } = require('../config/firebase');
 
-// ====================== DASHBOARD ======================
 const getDashboard = async (req, res) => {
   try {
     const [
@@ -32,27 +31,60 @@ const getDashboard = async (req, res) => {
   }
 };
 
-// ====================== INSTITUTIONS ======================
 const getInstitutions = async (req, res) => {
   try {
-    const snapshot = await db.collection('institutions').get();
+    const snapshot = await db.collection('users').where('role', '==', 'institution').get();
     const institutions = snapshot.docs.map(doc => {
       const data = doc.data();
+      
+      // Handle createdAt timestamp safely
+      let createdAt;
+      if (data.createdAt) {
+        if (typeof data.createdAt.toDate === 'function') {
+          createdAt = data.createdAt.toDate();
+        } else if (data.createdAt instanceof Date) {
+          createdAt = data.createdAt;
+        } else if (data.createdAt.seconds) {
+          // If it's a Firestore timestamp object but toDate is not available
+          createdAt = new Date(data.createdAt.seconds * 1000);
+        } else {
+          createdAt = new Date(data.createdAt);
+        }
+      } else {
+        createdAt = new Date();
+      }
+      
+      // Handle updatedAt timestamp safely
+      let updatedAt;
+      if (data.updatedAt) {
+        if (typeof data.updatedAt.toDate === 'function') {
+          updatedAt = data.updatedAt.toDate();
+        } else if (data.updatedAt instanceof Date) {
+          updatedAt = data.updatedAt;
+        } else if (data.updatedAt.seconds) {
+          updatedAt = new Date(data.updatedAt.seconds * 1000);
+        } else {
+          updatedAt = new Date(data.updatedAt);
+        }
+      } else {
+        updatedAt = new Date();
+      }
+
       return {
         id: doc.id,
         uid: data.uid || doc.id,
-        institutionName: data.name || 'No Name',
-        email: data.email,
+        institutionName: data.institutionName || data.name || 'No Name',
+        email: data.email || data.contactEmail || '',
         description: data.description || '',
         contactInfo: {
-          email: data.contactEmail || '',
-          phone: data.contactPhone || ''
+          email: data.contactEmail || data.email || '',
+          phone: data.contactPhone || data.phone || ''
         },
         location: data.location || 'Not specified',
         slogan: data.slogan || '',
         approved: data.approved || false,
-        createdAt: data.createdAt ? data.createdAt.toDate() : new Date(),
-        updatedAt: data.updatedAt ? data.updatedAt.toDate() : new Date()
+        createdAt: createdAt,
+        updatedAt: updatedAt
       };
     });
 
@@ -63,27 +95,59 @@ const getInstitutions = async (req, res) => {
   }
 };
 
-// ====================== COMPANIES ======================
 const getCompanies = async (req, res) => {
   try {
-    const snapshot = await db.collection('companies').get();
+    const snapshot = await db.collection('users').where('role', '==', 'company').get();
     const companies = snapshot.docs.map(doc => {
       const data = doc.data();
+      
+      // Handle createdAt timestamp safely
+      let createdAt;
+      if (data.createdAt) {
+        if (typeof data.createdAt.toDate === 'function') {
+          createdAt = data.createdAt.toDate();
+        } else if (data.createdAt instanceof Date) {
+          createdAt = data.createdAt;
+        } else if (data.createdAt.seconds) {
+          createdAt = new Date(data.createdAt.seconds * 1000);
+        } else {
+          createdAt = new Date(data.createdAt);
+        }
+      } else {
+        createdAt = new Date();
+      }
+      
+      // Handle updatedAt timestamp safely
+      let updatedAt;
+      if (data.updatedAt) {
+        if (typeof data.updatedAt.toDate === 'function') {
+          updatedAt = data.updatedAt.toDate();
+        } else if (data.updatedAt instanceof Date) {
+          updatedAt = data.updatedAt;
+        } else if (data.updatedAt.seconds) {
+          updatedAt = new Date(data.updatedAt.seconds * 1000);
+        } else {
+          updatedAt = new Date(data.updatedAt);
+        }
+      } else {
+        updatedAt = new Date();
+      }
+
       return {
         id: doc.id,
         uid: data.uid || doc.id,
-        companyName: data.name || 'No Name',
+        companyName: data.companyName || data.name || 'No Name',
         industry: data.industry || 'Not specified',
-        email: data.email,
+        email: data.email || data.contactEmail || '',
         description: data.description || '',
         contactInfo: {
-          email: data.contactEmail || '',
-          phone: data.contactPhone || ''
+          email: data.contactEmail || data.email || '',
+          phone: data.contactPhone || data.phone || ''
         },
         location: data.location || 'Not specified',
         approved: data.approved || false,
-        createdAt: data.createdAt ? data.createdAt.toDate() : new Date(),
-        updatedAt: data.updatedAt ? data.updatedAt.toDate() : new Date()
+        createdAt: createdAt,
+        updatedAt: updatedAt
       };
     });
 
@@ -94,11 +158,10 @@ const getCompanies = async (req, res) => {
   }
 };
 
-// ====================== APPROVE / SUSPEND COMPANY ======================
 const approveCompany = async (req, res) => {
   try {
     const { companyId } = req.params;
-    const docRef = db.collection('companies').doc(companyId);
+    const docRef = db.collection('users').doc(companyId);
     const docSnap = await docRef.get();
 
     if (!docSnap.exists) {
@@ -120,7 +183,7 @@ const approveCompany = async (req, res) => {
 const suspendCompany = async (req, res) => {
   try {
     const { companyId } = req.params;
-    const docRef = db.collection('companies').doc(companyId);
+    const docRef = db.collection('users').doc(companyId);
     const docSnap = await docRef.get();
 
     if (!docSnap.exists) {
@@ -139,17 +202,16 @@ const suspendCompany = async (req, res) => {
   }
 };
 
-// ====================== APPROVE / SUSPEND INSTITUTION ======================
 const approveInstitution = async (req, res) => {
   try {
     const { institutionId } = req.params;
-    const snapshot = await db.collection('institutions').where('uid', '==', institutionId).get();
+    const docRef = db.collection('users').doc(institutionId);
+    const docSnap = await docRef.get();
 
-    if (snapshot.empty) {
+    if (!docSnap.exists) {
       return res.status(404).json({ error: 'Institution not found' });
     }
 
-    const docRef = snapshot.docs[0].ref;
     await docRef.update({
       approved: true,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -165,13 +227,13 @@ const approveInstitution = async (req, res) => {
 const suspendInstitution = async (req, res) => {
   try {
     const { institutionId } = req.params;
-    const snapshot = await db.collection('institutions').where('uid', '==', institutionId).get();
+    const docRef = db.collection('users').doc(institutionId);
+    const docSnap = await docRef.get();
 
-    if (snapshot.empty) {
+    if (!docSnap.exists) {
       return res.status(404).json({ error: 'Institution not found' });
     }
 
-    const docRef = snapshot.docs[0].ref;
     await docRef.update({
       approved: false,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -184,22 +246,54 @@ const suspendInstitution = async (req, res) => {
   }
 };
 
-// ====================== USERS (STUDENTS / ADMINS) ======================
 const getUsers = async (req, res) => {
   try {
     const snapshot = await db.collection('users').get();
     const users = snapshot.docs.map(doc => {
       const data = doc.data();
+      
+      // Handle createdAt timestamp safely
+      let createdAt;
+      if (data.createdAt) {
+        if (typeof data.createdAt.toDate === 'function') {
+          createdAt = data.createdAt.toDate();
+        } else if (data.createdAt instanceof Date) {
+          createdAt = data.createdAt;
+        } else if (data.createdAt.seconds) {
+          createdAt = new Date(data.createdAt.seconds * 1000);
+        } else {
+          createdAt = new Date(data.createdAt);
+        }
+      } else {
+        createdAt = new Date();
+      }
+      
+      // Handle updatedAt timestamp safely
+      let updatedAt;
+      if (data.updatedAt) {
+        if (typeof data.updatedAt.toDate === 'function') {
+          updatedAt = data.updatedAt.toDate();
+        } else if (data.updatedAt instanceof Date) {
+          updatedAt = data.updatedAt;
+        } else if (data.updatedAt.seconds) {
+          updatedAt = new Date(data.updatedAt.seconds * 1000);
+        } else {
+          updatedAt = new Date(data.updatedAt);
+        }
+      } else {
+        updatedAt = new Date();
+      }
+
       return {
         id: doc.id,
-        firstName: data.firstName,
-        lastName: data.lastName,
-        email: data.email,
-        role: data.role,
+        firstName: data.firstName || '',
+        lastName: data.lastName || '',
+        email: data.email || '',
+        role: data.role || 'student',
         highSchool: data.highSchool || '',
         approved: data.approved !== false,
-        createdAt: data.createdAt ? data.createdAt.toDate() : new Date(),
-        updatedAt: data.updatedAt ? data.updatedAt.toDate() : new Date()
+        createdAt: createdAt,
+        updatedAt: updatedAt
       };
     });
 
@@ -210,7 +304,6 @@ const getUsers = async (req, res) => {
   }
 };
 
-// ====================== REPORTS ======================
 const getReports = async (req, res) => {
   try {
     const { type } = req.query;
@@ -232,8 +325,8 @@ const getReports = async (req, res) => {
       reportData = applicationsByStatus;
     } else if (type === 'users') {
       const studentsSnap = await db.collection('users').where('role', '==', 'student').get();
-      const institutionsSnap = await db.collection('institutions').get();
-      const companiesSnap = await db.collection('companies').get();
+      const institutionsSnap = await db.collection('users').where('role', '==', 'institution').get();
+      const companiesSnap = await db.collection('users').where('role', '==', 'company').get();
 
       reportData = {
         students: studentsSnap.size,
@@ -249,7 +342,6 @@ const getReports = async (req, res) => {
   }
 };
 
-// ====================== UPDATE USER ======================
 const updateUser = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -267,7 +359,6 @@ const updateUser = async (req, res) => {
   }
 };
 
-// ====================== DELETE USER ======================
 const deleteUser = async (req, res) => {
   try {
     const { userId } = req.params;

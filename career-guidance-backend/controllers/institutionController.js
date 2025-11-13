@@ -234,29 +234,72 @@ const updateApplicationStatus = async (req, res) => {
 
 // =================== Admissions ===================
 
-// Publish admissions for this institution
+// Publish admissions for this institution - FIXED VERSION
 const publishAdmissions = async (req, res) => {
   try {
-    const coursesSnapshot = await db.collection('courses')
+    const { courseId } = req.body;
+
+    if (!courseId) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Course ID is required' 
+      });
+    }
+
+    // Verify the course belongs to this institution
+    const courseDoc = await db.collection('courses').doc(courseId).get();
+    if (!courseDoc.exists) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Course not found' 
+      });
+    }
+
+    const course = courseDoc.data();
+    if (course.institutionId !== req.user.uid) {
+      return res.status(403).json({ 
+        success: false,
+        error: 'Access denied' 
+      });
+    }
+
+    // Update ALL applications for this course to set admissionPublished = true
+    const applicationsSnapshot = await db.collection('applications')
+      .where('courseId', '==', courseId)
       .where('institutionId', '==', req.user.uid)
       .get();
 
+    if (applicationsSnapshot.empty) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'No applications found for this course' 
+      });
+    }
+
     const batch = db.batch();
-    coursesSnapshot.docs.forEach(doc => {
+    
+    applicationsSnapshot.docs.forEach(doc => {
       batch.update(doc.ref, { 
-        admissionsPublished: true, 
+        admissionPublished: true, 
         updatedAt: new Date() 
       });
     });
 
     await batch.commit();
+
+    console.log(`Published admissions for ${applicationsSnapshot.size} applications in course: ${courseId}`);
+
     res.json({ 
       success: true, 
-      message: 'Admissions published successfully for all courses' 
+      message: `Admissions published successfully for ${applicationsSnapshot.size} applications`,
+      publishedCount: applicationsSnapshot.size
     });
   } catch (error) {
     console.error('Error in publishAdmissions:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    });
   }
 };
 

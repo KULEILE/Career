@@ -90,12 +90,12 @@ const registerValidation = (data) => {
       otherwise: Joi.string().allow('').optional()
     })
   }).with('password', 'confirmPassword')
-    .unknown(true); // ← ONLY ADDED THIS LINE
+    .unknown(true);
 
   return schema.validate(data);
 };
 
-// ALL OTHER VALIDATION FUNCTIONS REMAIN EXACTLY THE SAME
+// ----------------- COURSE VALIDATION -----------------
 const courseValidation = (data) => {
   const schema = Joi.object({
     name: Joi.string().min(2).max(100).required(),
@@ -115,19 +115,21 @@ const courseValidation = (data) => {
   return schema.validate(data);
 };
 
+// ----------------- APPLICATION VALIDATION -----------------
 const applicationValidation = (data) => {
   const schema = Joi.object({
     courseId: Joi.string().required(),
     institutionId: Joi.string().required(),
-    studentId: Joi.string().required(),
+    studentId: Joi.string().optional(),
     subjects: Joi.array().items(Joi.object({
       name: Joi.string().required(),
-      grade: Joi.string().required()
+      grade: Joi.string().valid('A','B','C','D','E','F').required()
     })).required().min(1)
   });
   return schema.validate(data);
 };
 
+// ----------------- FACULTY VALIDATION -----------------
 const facultyValidation = (data) => {
   const schema = Joi.object({
     name: Joi.string().min(2).max(100).required(),
@@ -141,6 +143,7 @@ const facultyValidation = (data) => {
   return schema.validate(data);
 };
 
+// ----------------- PROSPECTUS VALIDATION -----------------
 const prospectusValidation = (data) => {
   const schema = Joi.object({
     title: Joi.string().min(2).max(100).required(),
@@ -155,6 +158,7 @@ const prospectusValidation = (data) => {
   return schema.validate(data);
 };
 
+// ----------------- INSTITUTION PROFILE VALIDATION -----------------
 const institutionProfileValidation = (data) => {
   const schema = Joi.object({
     institutionName: Joi.string().min(2).max(100).required(),
@@ -170,6 +174,7 @@ const institutionProfileValidation = (data) => {
   return schema.validate(data);
 };
 
+// ----------------- ADMISSION PUBLISH VALIDATION -----------------
 const admissionPublishValidation = (data) => {
   const schema = Joi.object({
     courseId: Joi.string().required(),
@@ -178,6 +183,7 @@ const admissionPublishValidation = (data) => {
   return schema.validate(data);
 };
 
+// ----------------- APPLICATION STATUS VALIDATION -----------------
 const applicationStatusValidation = (data) => {
   const schema = Joi.object({
     status: Joi.string().valid('pending', 'admitted', 'rejected', 'waitlisted').required(),

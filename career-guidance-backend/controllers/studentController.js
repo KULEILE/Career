@@ -2,6 +2,21 @@ const { db } = require('../config/firebase');
 const NotificationService = require('../services/notificationService');
 const Student = require('../models/Student');
 
+// Helper function to safely convert timestamps
+const safeToDate = (timestamp) => {
+  if (!timestamp) return new Date();
+  
+  if (typeof timestamp.toDate === 'function') {
+    return timestamp.toDate();
+  } else if (timestamp instanceof Date) {
+    return timestamp;
+  } else if (timestamp.seconds) {
+    return new Date(timestamp.seconds * 1000);
+  } else {
+    return new Date(timestamp);
+  }
+};
+
 const getStudentProfile = async (req, res) => {
   try {
     const studentDoc = await db.collection('users').doc(req.user.uid).get();
@@ -103,6 +118,8 @@ const getStudentApplications = async (req, res) => {
       applications.push({
         id: doc.id,
         ...application,
+        appliedAt: safeToDate(application.appliedAt),
+        updatedAt: safeToDate(application.updatedAt),
         course: courseDoc.exists ? courseDoc.data() : null,
         institution: institutionDoc.exists ? institutionDoc.data() : null
       });
@@ -141,9 +158,23 @@ const applyForCourse = async (req, res) => {
       });
     }
 
-    const student = Student.fromFirestore(studentDoc);
+    // Check if Student model exists and has required methods
+    let student;
+    try {
+      student = Student.fromFirestore ? Student.fromFirestore(studentDoc) : studentDoc.data();
+    } catch (error) {
+      console.warn('Student model methods not available, using basic data');
+      student = studentDoc.data();
+      student.applicationsCount = student.applicationsCount || {};
+    }
 
-    if (!student.canApplyToInstitution(institutionId)) {
+    // Check application limits (max 2 per institution)
+    const existingApplications = await db.collection('applications')
+      .where('studentId', '==', studentId)
+      .where('institutionId', '==', institutionId)
+      .get();
+
+    if (existingApplications.size >= 2) {
       return res.status(400).json({ 
         success: false,
         error: 'You have reached the maximum of 2 applications per institution' 
@@ -160,14 +191,15 @@ const applyForCourse = async (req, res) => {
 
     const course = courseDoc.data();
 
-    if (!student.meetsRequirements(course.requirements)) {
+    // Check course requirements
+    if (course.requirements && !checkCourseRequirements(student, course.requirements)) {
       return res.status(400).json({ 
         success: false,
         error: 'You do not meet the course requirements' 
       });
     }
 
-    if (course.applicationDeadline && new Date(course.applicationDeadline) < new Date()) {
+    if (course.applicationDeadline && safeToDate(course.applicationDeadline) < new Date()) {
       return res.status(400).json({ 
         success: false,
         error: 'Application deadline has passed' 
@@ -183,14 +215,19 @@ const applyForCourse = async (req, res) => {
       status: 'pending',
       appliedAt: new Date(),
       updatedAt: new Date(),
-      studentSubjects: student.subjects
+      studentSubjects: student.subjects || [],
+      studentName: `${student.firstName || ''} ${student.lastName || ''}`.trim()
     };
 
     const applicationRef = await db.collection('applications').add(applicationData);
 
-    student.incrementApplicationCount(institutionId);
+    // Update student's application count
+    const currentCount = student.applicationsCount || {};
     await db.collection('users').doc(studentId).update({
-      applicationsCount: student.applicationsCount,
+      applicationsCount: {
+        ...currentCount,
+        [institutionId]: (currentCount[institutionId] || 0) + 1
+      },
       updatedAt: new Date()
     });
 
@@ -228,11 +265,20 @@ const uploadTranscript = async (req, res) => {
       });
     }
 
-    // Validate that it's a base64 string (simplified check)
-    if (typeof transcriptUrl !== 'string' || transcriptUrl.length < 100) {
+    // Validate that it's a base64 string and PDF
+    if (typeof transcriptUrl !== 'string' || !transcriptUrl.startsWith('data:application/pdf')) {
       return res.status(400).json({ 
         success: false,
-        error: 'Invalid file data. Please upload a valid file.' 
+        error: 'Invalid file type. Please upload PDF files only.' 
+      });
+    }
+
+    // Validate file size (100MB max)
+    const maxFileSize = 100 * 1024 * 1024;
+    if (fileSize > maxFileSize) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'File size must be less than 100MB' 
       });
     }
 
@@ -251,21 +297,22 @@ const uploadTranscript = async (req, res) => {
     // Check if student has completed studies for final transcript
     const isFinalTranscript = student.studyCompleted;
     
-    // For base64 data, we need to handle it carefully in Firestore
-    // We'll store it as a string but be aware of size limitations
     const updateData = {
-      transcriptData: transcriptUrl, // Store base64 data
+      transcriptData: transcriptUrl,
       transcriptFileName: fileName || 'Academic Transcript',
       transcriptFileSize: fileSize || 0,
       hasTranscript: true,
       transcriptUploadedAt: new Date(),
       transcriptVerified: false,
-      updatedAt: new Date()
+      updatedAt: new Date(),
+      transcriptFileType: 'pdf'
     };
 
     if (isFinalTranscript) {
       updateData.finalTranscriptData = transcriptUrl;
+      updateData.finalTranscriptFileName = fileName || 'Final Academic Transcript';
       updateData.finalTranscriptUploadedAt = new Date();
+      updateData.finalTranscriptFileType = 'pdf';
     }
 
     await db.collection('users').doc(studentId).update(updateData);
@@ -305,11 +352,20 @@ const uploadFinalTranscript = async (req, res) => {
       });
     }
 
-    // Validate that it's a base64 string
-    if (typeof transcriptUrl !== 'string' || transcriptUrl.length < 100) {
+    // Validate that it's a base64 string and PDF
+    if (typeof transcriptUrl !== 'string' || !transcriptUrl.startsWith('data:application/pdf')) {
       return res.status(400).json({ 
         success: false,
-        error: 'Invalid file data. Please upload a valid file.' 
+        error: 'Invalid file type. Please upload PDF files only.' 
+      });
+    }
+
+    // Validate file size (100MB max)
+    const maxFileSize = 100 * 1024 * 1024;
+    if (fileSize > maxFileSize) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'File size must be less than 100MB' 
       });
     }
 
@@ -336,7 +392,8 @@ const uploadFinalTranscript = async (req, res) => {
       hasTranscript: true,
       transcriptVerified: false,
       finalTranscriptUploadedAt: new Date(),
-      updatedAt: new Date()
+      updatedAt: new Date(),
+      finalTranscriptFileType: 'pdf'
     });
 
     await NotificationService.createNotification(
@@ -373,11 +430,20 @@ const uploadCertificate = async (req, res) => {
       });
     }
 
-    // Validate that it's a base64 string
-    if (typeof certificateUrl !== 'string' || certificateUrl.length < 100) {
+    // Validate that it's a base64 string and PDF
+    if (typeof certificateUrl !== 'string' || !certificateUrl.startsWith('data:application/pdf')) {
       return res.status(400).json({ 
         success: false,
-        error: 'Invalid file data. Please upload a valid file.' 
+        error: 'Invalid file type. Please upload PDF files only.' 
+      });
+    }
+
+    // Validate file size (100MB max)
+    const maxFileSize = 100 * 1024 * 1024;
+    if (size > maxFileSize) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'File size must be less than 100MB' 
       });
     }
 
@@ -403,10 +469,11 @@ const uploadCertificate = async (req, res) => {
 
     const newCertificate = {
       name: name || 'Certificate',
-      data: certificateUrl, // Store base64 data
+      data: certificateUrl,
       size: size || 0,
       verified: false,
-      uploadedAt: new Date()
+      uploadedAt: new Date(),
+      fileType: 'pdf'
     };
 
     const updatedCertificates = [...(student.certificates || []), newCertificate];
@@ -487,6 +554,8 @@ const getAdmissions = async (req, res) => {
       admissions.push({
         id: doc.id,
         ...application,
+        appliedAt: safeToDate(application.appliedAt),
+        updatedAt: safeToDate(application.updatedAt),
         course: courseDoc.exists ? courseDoc.data() : null,
         institution: institutionDoc.exists ? institutionDoc.data() : null,
         canAccept: true
@@ -538,6 +607,9 @@ const getAvailableJobs = async (req, res) => {
       jobs.push({
         id: doc.id,
         ...job,
+        deadline: safeToDate(job.deadline),
+        createdAt: safeToDate(job.createdAt),
+        updatedAt: safeToDate(job.updatedAt),
         company: companyData,
         hasApplied: !existingApplication.empty,
         isQualified: isQualified,
@@ -606,6 +678,9 @@ const getJobRecommendations = async (req, res) => {
         recommendedJobs.push({
           id: doc.id,
           ...job,
+          deadline: safeToDate(job.deadline),
+          createdAt: safeToDate(job.createdAt),
+          updatedAt: safeToDate(job.updatedAt),
           company: companyData,
           hasApplied: !existingApplication.empty,
           matchScore: matchScore,
@@ -668,7 +743,7 @@ const applyForJob = async (req, res) => {
     }
 
     const job = jobDoc.data();
-    if (!job.active || new Date(job.deadline) < new Date()) {
+    if (!job.active || safeToDate(job.deadline) < new Date()) {
       return res.status(400).json({ 
         success: false,
         error: 'This job is no longer available' 
@@ -701,7 +776,7 @@ const applyForJob = async (req, res) => {
         lastName: student.lastName,
         email: student.email,
         hasTranscript: student.hasTranscript,
-        certificates: student.certificates
+        certificates: student.certificates || []
       }
     };
 
@@ -746,10 +821,15 @@ const getStudentJobApplications = async (req, res) => {
       .orderBy('appliedAt', 'desc')
       .get();
 
-    const jobApplications = jobApplicationsSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
+    const jobApplications = jobApplicationsSnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        appliedAt: safeToDate(data.appliedAt),
+        updatedAt: safeToDate(data.updatedAt)
+      };
+    });
 
     res.json({ 
       success: true,
@@ -787,11 +867,11 @@ const getStudentDocuments = async (req, res) => {
         id: 'transcript',
         type: 'transcript',
         fileName: student.transcriptFileName || 'Academic Transcript',
-        fileUrl: student.transcriptData || '', // Use base64 data for viewing
+        fileUrl: student.transcriptData || '',
         fileSize: student.transcriptFileSize || 0,
         verified: student.transcriptVerified || false,
-        uploadedAt: student.transcriptUploadedAt || student.updatedAt,
-        createdAt: student.transcriptUploadedAt || student.updatedAt
+        uploadedAt: safeToDate(student.transcriptUploadedAt || student.updatedAt),
+        createdAt: safeToDate(student.transcriptUploadedAt || student.updatedAt)
       });
     }
     
@@ -801,11 +881,11 @@ const getStudentDocuments = async (req, res) => {
         id: 'final-transcript',
         type: 'transcript',
         fileName: student.finalTranscriptFileName || 'Final Academic Transcript',
-        fileUrl: student.finalTranscriptData || '', // Use base64 data for viewing
+        fileUrl: student.finalTranscriptData || '',
         fileSize: student.finalTranscriptFileSize || 0,
         verified: student.transcriptVerified || false,
-        uploadedAt: student.finalTranscriptUploadedAt || student.updatedAt,
-        createdAt: student.finalTranscriptUploadedAt || student.updatedAt
+        uploadedAt: safeToDate(student.finalTranscriptUploadedAt || student.updatedAt),
+        createdAt: safeToDate(student.finalTranscriptUploadedAt || student.updatedAt)
       });
     }
     
@@ -816,11 +896,11 @@ const getStudentDocuments = async (req, res) => {
           id: `certificate-${index}`,
           type: 'certificate',
           fileName: cert.name || `Certificate ${index + 1}`,
-          fileUrl: cert.data || '', // Use base64 data for viewing
+          fileUrl: cert.data || '',
           fileSize: cert.size || 0,
           verified: cert.verified || false,
-          uploadedAt: cert.uploadedAt || student.updatedAt,
-          createdAt: cert.uploadedAt || student.updatedAt
+          uploadedAt: safeToDate(cert.uploadedAt || student.updatedAt),
+          createdAt: safeToDate(cert.uploadedAt || student.updatedAt)
         });
       });
     }
@@ -967,7 +1047,7 @@ const acceptAdmissionOffer = async (req, res) => {
     await NotificationService.createNotification(
       req.user.uid,
       'Admission Accepted',
-      `You have accepted the admission offer for ${application.courseId}. Other offers have been automatically declined.`,
+      `You have accepted the admission offer for ${application.courseName}. Other offers have been automatically declined.`,
       'success'
     );
 
@@ -1026,7 +1106,12 @@ const getStudentDashboard = async (req, res) => {
 
     const notifications = [];
     notificationsSnapshot.forEach(doc => {
-      notifications.push({ id: doc.id, ...doc.data() });
+      const notification = doc.data();
+      notifications.push({ 
+        id: doc.id, 
+        ...notification,
+        createdAt: safeToDate(notification.createdAt)
+      });
     });
 
     const dashboardData = {
@@ -1163,6 +1248,19 @@ const calculateJobMatch = (student, job) => {
   }
   
   return Math.min(score, 100);
+};
+
+const checkCourseRequirements = (student, requirements) => {
+  if (!requirements || !student.subjects) return true;
+  
+  // Basic requirement checking logic
+  // You can expand this based on your specific requirements structure
+  const studentSubjects = student.subjects.map(subj => subj.name.toLowerCase());
+  const requiredSubjects = requirements.requiredSubjects || [];
+  
+  return requiredSubjects.every(reqSubject => 
+    studentSubjects.includes(reqSubject.toLowerCase())
+  );
 };
 
 const promoteWaitlistedStudent = async (courseId, institutionId) => {

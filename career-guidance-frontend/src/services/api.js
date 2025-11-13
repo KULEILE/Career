@@ -4,25 +4,43 @@ const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: 15000,
 });
 
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
-    if (token) config.headers.Authorization = `Bearer ${token}`;
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => {
+    console.error('Request interceptor error:', error);
+    return Promise.reject(error);
+  }
 );
 
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      window.location.href = '/login';
+    if (error.code === 'ECONNABORTED') {
+      console.error('Request timeout:', error.config.url);
+      return Promise.reject(new Error('Request timeout. Please check your connection.'));
     }
+
+    if (!error.response) {
+      console.error('Network error - no response received:', error.message);
+      return Promise.reject(new Error('Network error. Please check your connection and ensure the server is running.'));
+    }
+
+    if (error.response.status === 401) {
+      localStorage.removeItem('token');
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
+    }
+
     return Promise.reject(error);
   }
 );
@@ -30,9 +48,14 @@ api.interceptors.response.use(
 // -------------------- Auth API --------------------
 export const registerUser = (userData) => api.post('/auth/register', userData);
 export const loginUser = (loginData) => api.post('/auth/login', loginData);
-export const getUserProfile = (token) => api.get('/auth/profile', {
-  headers: { Authorization: `Bearer ${token}` }
-});
+export const getUserProfile = (token) => {
+  if (!token) {
+    return Promise.reject(new Error('No token provided'));
+  }
+  return api.get('/auth/profile', {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+};
 
 // -------------------- Student API --------------------
 export const getStudentProfile = () => api.get('/students/profile');

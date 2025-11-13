@@ -67,7 +67,12 @@ const InstitutionApplications = () => {
   };
 
   const getUniqueCourses = () => {
-    const courses = applications.map(app => app.course);
+    // FIXED: Added null checks to prevent undefined errors
+    const courses = applications
+      .map(app => app.course) // Get courses from applications
+      .filter(course => course && course.id); // Filter out undefined courses and courses without id
+    
+    // Remove duplicates using Map
     return [...new Map(courses.map(course => [course.id, course])).values()];
   };
 

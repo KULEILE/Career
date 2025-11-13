@@ -2,57 +2,102 @@ const { admin, db } = require('../config/firebase');
 
 const authenticate = async (req, res, next) => {
   try {
-    const token = req.header('Authorization')?.replace('Bearer ', '');
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.log('Auth middleware: No token provided');
+      return res.status(401).json({ error: 'Access denied. No token provided.' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    
     if (!token) {
-      return res.status(401).json({ error: 'No token provided' });
+      console.log('Auth middleware: Token is empty');
+      return res.status(401).json({ error: 'Access denied. Invalid token format.' });
     }
 
+    console.log('Auth middleware: Verifying token...');
+    
     const decodedToken = await admin.auth().verifyIdToken(token);
-    req.user = { uid: decodedToken.uid, email: decodedToken.email };
-
-    let userData = null;
-    let collectionName = '';
-
-    // Check all collections to find the user
-    const institutionDoc = await db.collection('institutions').doc(decodedToken.uid).get();
-    if (institutionDoc.exists) {
-      userData = institutionDoc.data();
-      collectionName = 'institutions';
-    } else {
-      const companyDoc = await db.collection('companies').doc(decodedToken.uid).get();
-      if (companyDoc.exists) {
-        userData = companyDoc.data();
-        collectionName = 'companies';
-      } else {
-        const userDoc = await db.collection('users').doc(decodedToken.uid).get();
-        if (userDoc.exists) {
-          userData = userDoc.data();
-          collectionName = 'users';
-        }
-      }
+    
+    if (!decodedToken || !decodedToken.uid) {
+      console.log('Auth middleware: Token verification failed - no UID');
+      return res.status(401).json({ error: 'Invalid token.' });
     }
 
-    if (!userData) {
-      return res.status(404).json({ error: 'User not found in database' });
-    }
-
-    req.user.role = userData.role;
-    req.user.profile = userData;
-    req.user.collection = collectionName; // Optional: for debugging
+    console.log('Auth middleware: Token verified for user:', decodedToken.uid);
+    
+    req.user = {
+      uid: decodedToken.uid,
+      email: decodedToken.email
+    };
 
     next();
   } catch (error) {
-    console.error('Authentication error:', error);
-    res.status(401).json({ error: 'Invalid or expired token' });
+    console.error('Auth middleware: Token verification error:', error.message);
+    
+    if (error.code === 'auth/id-token-expired') {
+      return res.status(401).json({ error: 'Token expired. Please login again.' });
+    }
+    
+    if (error.code === 'auth/id-token-revoked') {
+      return res.status(401).json({ error: 'Token revoked. Please login again.' });
+    }
+    
+    return res.status(401).json({ error: 'Invalid token. Please login again.' });
   }
 };
 
-const requireRole = (roles = []) => {
-  return (req, res, next) => {
-    if (!req.user || !roles.includes(req.user.role)) {
-      return res.status(403).json({ error: 'Access denied: insufficient permissions' });
+const requireRole = (roles) => {
+  return async (req, res, next) => {
+    try {
+      if (!req.user || !req.user.uid) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      let userData = null;
+      let userRole = null;
+      
+      const institutionDoc = await db.collection('institutions').doc(req.user.uid).get();
+      if (institutionDoc.exists) {
+        userData = institutionDoc.data();
+        userRole = userData.role;
+      } else {
+        const companyDoc = await db.collection('companies').doc(req.user.uid).get();
+        if (companyDoc.exists) {
+          userData = companyDoc.data();
+          userRole = userData.role;
+        } else {
+          const userDoc = await db.collection('users').doc(req.user.uid).get();
+          if (userDoc.exists) {
+            userData = userDoc.data();
+            userRole = userData.role;
+          }
+        }
+      }
+
+      if (!userData) {
+        return res.status(404).json({ error: 'User profile not found' });
+      }
+
+      if (!userRole) {
+        return res.status(403).json({ error: 'User role not defined' });
+      }
+
+      if (!roles.includes(userRole)) {
+        return res.status(403).json({ 
+          error: `Access denied. Required roles: ${roles.join(', ')}` 
+        });
+      }
+
+      req.user.role = userRole;
+      req.user.profile = userData;
+      
+      next();
+    } catch (error) {
+      console.error('Role middleware error:', error);
+      return res.status(500).json({ error: 'Internal server error during role verification' });
     }
-    next();
   };
 };
 

@@ -3,9 +3,8 @@ const { registerValidation } = require('../middleware/validation');
 
 const register = async (req, res) => {
   try {
-    console.log('Registration request received:', req.body); // Debug log
+    console.log('Registration request received:', req.body);
 
-    // Validate data
     const { error } = registerValidation(req.body);
     if (error) {
       console.log('Validation error:', error.details[0].message);
@@ -14,7 +13,6 @@ const register = async (req, res) => {
 
     const { email, password, firstName, lastName, role, organizationName, contactPhone, contactEmail, location, slogan, description, dateOfBirth, phone, highSchool, graduationYear } = req.body;
 
-    // Create user in Firebase Auth
     const userRecord = await admin.auth().createUser({
       email,
       password,
@@ -24,9 +22,7 @@ const register = async (req, res) => {
 
     const timestamp = new Date();
     
-    // Handle different roles with separate collections
     if (role === 'student') {
-      // Store student in users collection
       const userData = {
         uid: userRecord.uid,
         email,
@@ -46,7 +42,6 @@ const register = async (req, res) => {
       await db.collection('users').doc(userRecord.uid).set(userData);
 
     } else if (role === 'institution') {
-      // Store institution ONLY in institutions collection
       const institutionData = {
         uid: userRecord.uid,
         email,
@@ -65,7 +60,6 @@ const register = async (req, res) => {
       await db.collection('institutions').doc(userRecord.uid).set(institutionData);
 
     } else if (role === 'company') {
-      // Store company ONLY in companies collection
       const companyData = {
         uid: userRecord.uid,
         email,
@@ -84,7 +78,6 @@ const register = async (req, res) => {
       await db.collection('companies').doc(userRecord.uid).set(companyData);
 
     } else if (role === 'admin') {
-      // Store admin in users collection
       const userData = {
         uid: userRecord.uid,
         email,
@@ -100,16 +93,32 @@ const register = async (req, res) => {
 
     console.log('User registered successfully:', userRecord.uid);
 
+    const customToken = await admin.auth().createCustomToken(userRecord.uid);
+
     res.status(201).json({
       message: 'User registered successfully',
       user: {
         uid: userRecord.uid,
         email: userRecord.email,
         role: role
-      }
+      },
+      token: customToken
     });
   } catch (error) {
     console.error('Registration error:', error);
+    
+    if (error.code === 'auth/email-already-exists') {
+      return res.status(400).json({ error: 'Email already exists' });
+    }
+    
+    if (error.code === 'auth/invalid-email') {
+      return res.status(400).json({ error: 'Invalid email address' });
+    }
+    
+    if (error.code === 'auth/weak-password') {
+      return res.status(400).json({ error: 'Password is too weak' });
+    }
+    
     res.status(400).json({ error: error.message });
   }
 };
@@ -122,16 +131,13 @@ const login = async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
-    // Get user by email
     const userRecord = await admin.auth().getUserByEmail(email);
     
-    // Create a custom token for the user
     const customToken = await admin.auth().createCustomToken(userRecord.uid);
 
     let userData = null;
     let collectionName = '';
 
-    // Determine which collection to query based on user type
     const institutionDoc = await db.collection('institutions').doc(userRecord.uid).get();
     if (institutionDoc.exists) {
       userData = institutionDoc.data();
@@ -166,25 +172,33 @@ const login = async (req, res) => {
     });
   } catch (error) {
     console.error('Login error:', error);
+    
+    if (error.code === 'auth/user-not-found') {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+    
+    if (error.code === 'auth/invalid-email') {
+      return res.status(400).json({ error: 'Invalid email address' });
+    }
+    
     res.status(401).json({ error: 'Invalid email or password' });
   }
 };
 
 const getProfile = async (req, res) => {
   try {
+    console.log('getProfile called for user:', req.user.uid);
+    
     let userData = null;
 
-    // Check institutions collection first
     const institutionDoc = await db.collection('institutions').doc(req.user.uid).get();
     if (institutionDoc.exists) {
       userData = institutionDoc.data();
     } else {
-      // Check companies collection
       const companyDoc = await db.collection('companies').doc(req.user.uid).get();
       if (companyDoc.exists) {
         userData = companyDoc.data();
       } else {
-        // Check users collection (students/admins)
         const userDoc = await db.collection('users').doc(req.user.uid).get();
         if (userDoc.exists) {
           userData = userDoc.data();
@@ -193,13 +207,17 @@ const getProfile = async (req, res) => {
     }
 
     if (!userData) {
-      return res.status(404).json({ error: 'User not found' });
+      console.log('User profile not found for UID:', req.user.uid);
+      return res.status(404).json({ error: 'User profile not found' });
     }
 
+    console.log('Profile retrieved successfully for user:', req.user.uid);
+    
     res.json({ 
       user: userData
     });
   } catch (error) {
+    console.error('getProfile error:', error);
     res.status(500).json({ error: error.message });
   }
 };

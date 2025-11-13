@@ -1,45 +1,23 @@
-// Grade point mapping
-const gradePoints = {
-  'A': 90,
-  'B': 80,
-  'C': 70,
-  'D': 60,
-  'E': 50,
-  'F': 0
-};
+const gradePoints = { 'A': 90, 'B': 80, 'C': 70, 'D': 60, 'E': 50, 'F': 0 };
 
 const checkCourseEligibility = (course, studentSubjects, studentGrades) => {
   try {
-    const courseRequirements = course.requirements;
-    
-    if (!courseRequirements || !courseRequirements.subjects || !courseRequirements.minGrades) {
-      return false;
-    }
+    const requirements = course.requirements;
+    if (!requirements || !requirements.subjects || !requirements.minGrades) return false;
 
-    // Check if student meets all required subjects
-    const requiredSubjects = courseRequirements.subjects;
-    const minGrades = courseRequirements.minGrades;
+    for (const requiredSubject of requirements.subjects) {
+      const studentSubject = studentSubjects.find(s => s.name.toLowerCase() === requiredSubject.toLowerCase());
+      if (!studentSubject) return false;
 
-    for (const requiredSubject of requiredSubjects) {
-      const studentSubject = studentSubjects.find(sub => 
-        sub.name.toLowerCase() === requiredSubject.toLowerCase()
-      );
-
-      if (!studentSubject) {
-        return false; // Student doesn't have this subject
-      }
-
-      const minGrade = minGrades[requiredSubject];
+      const minGrade = requirements.minGrades[requiredSubject];
       const studentGrade = studentGrades[studentSubject.name];
 
-      if (!studentGrade || gradePoints[studentGrade] < gradePoints[minGrade]) {
-        return false; // Student doesn't meet grade requirement
-      }
+      if (!studentGrade || gradePoints[studentGrade] < gradePoints[minGrade]) return false;
     }
 
     return true;
-  } catch (error) {
-    console.error('Error checking eligibility:', error);
+  } catch (err) {
+    console.error('Eligibility check error:', err);
     return false;
   }
 };

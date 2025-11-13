@@ -33,16 +33,17 @@ const Transcripts = () => {
     
     if (!file) return;
 
-    // Validate file type
-    const validTypes = ['application/pdf', 'image/jpeg', 'image/png'];
+    // Validate file type - PDF only
+    const validTypes = ['application/pdf'];
     if (!validTypes.includes(file.type)) {
-      setError('Please upload PDF, JPEG, or PNG files only');
+      setError('Please upload PDF files only');
       return;
     }
 
-    // Validate file size (5MB max)
-    if (file.size > 5 * 1024 * 1024) {
-      setError('File size must be less than 5MB');
+    // Validate file size (100MB max)
+    const maxFileSize = 100 * 1024 * 1024;
+    if (file.size > maxFileSize) {
+      setError('File size must be less than 100MB');
       return;
     }
 
@@ -128,37 +129,29 @@ const Transcripts = () => {
 
   const handleViewDocument = (document) => {
     if (document.fileUrl) {
-      // If it's a base64 data URL, open in new tab
-      if (document.fileUrl.startsWith('data:')) {
+      // For PDF files, open in new tab
+      if (document.fileUrl.startsWith('data:application/pdf') || document.fileName?.toLowerCase().endsWith('.pdf')) {
         const newWindow = window.open();
         newWindow.document.write(`
           <html>
             <head>
               <title>${document.fileName}</title>
               <style>
-                body { margin: 0; padding: 20px; font-family: Arial, sans-serif; }
-                .container { max-width: 100%; text-align: center; }
-                img { max-width: 100%; height: auto; }
-                .pdf-view { width: 100%; height: 80vh; border: none; }
-                .info { margin-bottom: 20px; padding: 10px; background: #f8f9fa; border-radius: 4px; }
+                body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+                .container { width: 100%; height: 100vh; }
+                .pdf-view { width: 100%; height: 100vh; border: none; }
+                .info { display: none; }
               </style>
             </head>
             <body>
               <div class="container">
-                <div class="info">
-                  <h3>${document.fileName}</h3>
-                  <p>Type: ${getDocumentTypeDisplay(document.type)} | Status: ${document.verified ? 'Verified' : 'Pending Review'}</p>
-                </div>
-                ${document.fileUrl.startsWith('data:application/pdf') 
-                  ? `<iframe src="${document.fileUrl}" class="pdf-view" title="${document.fileName}"></iframe>`
-                  : `<img src="${document.fileUrl}" alt="${document.fileName}" />`
-                }
+                <iframe src="${document.fileUrl}" class="pdf-view" title="${document.fileName}"></iframe>
               </div>
             </body>
           </html>
         `);
       } else {
-        // If it's a regular URL, open in new tab
+        // Fallback for other file types
         window.open(document.fileUrl, '_blank');
       }
     } else {
@@ -219,7 +212,7 @@ const Transcripts = () => {
                   <input
                     type="file"
                     id="transcript-upload"
-                    accept=".pdf,.jpg,.jpeg,.png"
+                    accept=".pdf"
                     onChange={(e) => handleFileUpload(e, 'transcript')}
                     disabled={uploading}
                     style={{ display: 'none' }}
@@ -237,7 +230,7 @@ const Transcripts = () => {
                   </label>
                 </div>
                 <small style={{ color: '#666666' }}>
-                  Supported formats: PDF, JPG, PNG (Max 5MB)
+                  Supported format: PDF only (Max 100MB)
                 </small>
                 {transcriptCount > 0 && (
                   <div style={{ marginTop: '1rem', fontSize: '0.9rem', color: '#17a2b8' }}>
@@ -257,7 +250,7 @@ const Transcripts = () => {
                   <input
                     type="file"
                     id="certificate-upload"
-                    accept=".pdf,.jpg,.jpeg,.png"
+                    accept=".pdf"
                     onChange={(e) => handleFileUpload(e, 'certificate')}
                     disabled={uploading}
                     style={{ display: 'none' }}
@@ -274,7 +267,7 @@ const Transcripts = () => {
                   </label>
                 </div>
                 <small style={{ color: '#666666' }}>
-                  Supported formats: PDF, JPG, PNG (Max 5MB)
+                  Supported format: PDF only (Max 100MB)
                 </small>
                 {certificateCount > 0 && (
                   <div style={{ marginTop: '1rem', fontSize: '0.9rem', color: '#28a745' }}>
@@ -446,6 +439,7 @@ const Transcripts = () => {
             <li><strong>Privacy:</strong> Your documents are securely stored and only shared with institutions/companies you apply to</li>
             <li><strong>Job Opportunities:</strong> Verified transcripts unlock job matching and application features</li>
             <li><strong>Deletion:</strong> You can delete uploaded documents at any time. Deleted documents cannot be recovered.</li>
+            <li><strong>File Format:</strong> Only PDF files are accepted (maximum 100MB per file)</li>
           </ul>
         </div>
 
@@ -457,9 +451,9 @@ const Transcripts = () => {
               <strong>For Best Results:</strong>
               <ul style={{ fontSize: '0.9rem', marginBottom: 0 }}>
                 <li>Ensure documents are clear and readable</li>
-                <li>Upload high-quality scans or photos</li>
-                <li>Keep file sizes under 5MB</li>
-                <li>Use PDF format for multi-page documents</li>
+                <li>Upload high-quality PDF scans</li>
+                <li>Keep file sizes under 100MB</li>
+                <li>Use PDF format for all documents</li>
               </ul>
             </div>
             <div className="col-6">
