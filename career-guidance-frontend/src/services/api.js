@@ -10,9 +10,7 @@ const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
+    if (token) config.headers.Authorization = `Bearer ${token}`;
     return config;
   },
   (error) => Promise.reject(error)
@@ -32,7 +30,9 @@ api.interceptors.response.use(
 // -------------------- Auth API --------------------
 export const registerUser = (userData) => api.post('/auth/register', userData);
 export const loginUser = (loginData) => api.post('/auth/login', loginData);
-export const getUserProfile = () => api.get('/auth/profile');
+export const getUserProfile = (token) => api.get('/auth/profile', {
+  headers: { Authorization: `Bearer ${token}` }
+});
 
 // -------------------- Student API --------------------
 export const getStudentProfile = () => api.get('/students/profile');
@@ -142,9 +142,7 @@ export const getApplicationStats = () => api.get('/students/applications/stats')
 // -------------------- File Upload with Progress --------------------
 export const uploadFileWithProgress = (url, formData, onUploadProgress) =>
   api.post(url, formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
+    headers: { 'Content-Type': 'multipart/form-data' },
     onUploadProgress: (progressEvent) => {
       if (onUploadProgress) {
         const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
@@ -159,5 +157,4 @@ export const uploadTranscriptWithProgress = (formData, onUploadProgress) =>
 export const uploadCertificateWithProgress = (formData, onUploadProgress) =>
   uploadFileWithProgress('/students/certificates', formData, onUploadProgress);
 
-// -------------------- Default Export --------------------
 export default api;

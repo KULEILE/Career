@@ -17,15 +17,36 @@ const InstitutionDashboard = () => {
 
   const fetchDashboardData = async () => {
     try {
-      const [profileResponse, coursesResponse, applicationsResponse] = await Promise.all([
+      // FIXED: Use Promise.allSettled to handle individual API failures gracefully
+      const [profileResponse, coursesResponse, applicationsResponse] = await Promise.allSettled([
         getInstitutionProfile(),
         getInstitutionCourses(),
         getInstitutionApplications()
       ]);
 
-      setProfile(profileResponse.data.institution);
-      setCourses(coursesResponse.data.courses);
-      setApplications(applicationsResponse.data.applications);
+      // Handle profile response
+      if (profileResponse.status === 'fulfilled') {
+        setProfile(profileResponse.value.data.institution);
+      } else {
+        console.error('Profile fetch failed:', profileResponse.reason);
+        setError('Failed to load profile data');
+      }
+
+      // Handle courses response
+      if (coursesResponse.status === 'fulfilled') {
+        setCourses(coursesResponse.value.data.courses || []);
+      } else {
+        console.error('Courses fetch failed:', coursesResponse.reason);
+        setCourses([]);
+      }
+
+      // Handle applications response
+      if (applicationsResponse.status === 'fulfilled') {
+        setApplications(applicationsResponse.value.data.applications || []);
+      } else {
+        console.error('Applications fetch failed:', applicationsResponse.reason);
+        setApplications([]);
+      }
 
       // Try to fetch faculties, but don't fail if endpoint doesn't exist yet
       try {

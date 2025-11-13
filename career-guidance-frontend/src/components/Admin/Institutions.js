@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getInstitutions, approveCompany, suspendCompany } from '../../services/api';
+import { getInstitutions, approveInstitution, suspendInstitution } from '../../services/api'; // ✅ FIXED IMPORTS
 import Loading from '../Common/Loading';
 
 const AdminInstitutions = () => {
@@ -18,6 +18,7 @@ const AdminInstitutions = () => {
       const response = await getInstitutions();
       setInstitutions(response.data.institutions);
     } catch (error) {
+      console.error('Error loading institutions:', error);
       setError('Error loading institutions');
     } finally {
       setLoading(false);
@@ -30,7 +31,7 @@ const AdminInstitutions = () => {
     setError('');
 
     try {
-      await approveCompany(institutionId);
+      await approveInstitution(institutionId); // ✅ FIXED: Now calls institution approval
       setMessage('Institution approved successfully');
       
       // Update local state
@@ -38,6 +39,7 @@ const AdminInstitutions = () => {
         inst.id === institutionId ? { ...inst, approved: true } : inst
       ));
     } catch (error) {
+      console.error('Error approving institution:', error);
       setError(error.response?.data?.error || 'Error approving institution');
     } finally {
       setActionLoading(null);
@@ -50,7 +52,7 @@ const AdminInstitutions = () => {
     setError('');
 
     try {
-      await suspendCompany(institutionId);
+      await suspendInstitution(institutionId); // ✅ FIXED: Now calls institution suspension
       setMessage('Institution suspended successfully');
       
       // Update local state
@@ -58,6 +60,7 @@ const AdminInstitutions = () => {
         inst.id === institutionId ? { ...inst, approved: false } : inst
       ));
     } catch (error) {
+      console.error('Error suspending institution:', error);
       setError(error.response?.data?.error || 'Error suspending institution');
     } finally {
       setActionLoading(null);
@@ -65,8 +68,7 @@ const AdminInstitutions = () => {
   };
 
   const handleViewDetails = (institution) => {
-    // In a real implementation, this would open a modal or navigate to details page
-    alert(`Institution Details:\nName: ${institution.institutionName}\nEmail: ${institution.email}\nContact: ${institution.firstName} ${institution.lastName}\nDescription: ${institution.description || 'No description'}`);
+    alert(`Institution Details:\nName: ${institution.institutionName}\nEmail: ${institution.email}\nContact Email: ${institution.contactInfo?.email || 'Not provided'}\nPhone: ${institution.contactInfo?.phone || 'Not provided'}\nLocation: ${institution.location}\nDescription: ${institution.description || 'No description'}`);
   };
 
   if (loading) return <Loading message="Loading institutions..." />;
@@ -117,7 +119,8 @@ const AdminInstitutions = () => {
                   <tr>
                     <th>Institution Name</th>
                     <th>Contact Email</th>
-                    <th>Representative</th>
+                    <th>Location</th>
+                    <th>Slogan</th>
                     <th>Registered Date</th>
                     <th>Actions</th>
                   </tr>
@@ -134,7 +137,8 @@ const AdminInstitutions = () => {
                         )}
                       </td>
                       <td>{institution.email}</td>
-                      <td>{institution.firstName} {institution.lastName}</td>
+                      <td>{institution.location}</td>
+                      <td>{institution.slogan || 'No slogan'}</td>
                       <td>{new Date(institution.createdAt).toLocaleDateString()}</td>
                       <td>
                         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -183,6 +187,7 @@ const AdminInstitutions = () => {
                     <th>Institution Name</th>
                     <th>Contact Email</th>
                     <th>Phone</th>
+                    <th>Location</th>
                     <th>Status</th>
                     <th>Actions</th>
                   </tr>
@@ -202,6 +207,7 @@ const AdminInstitutions = () => {
                       </td>
                       <td>{institution.email}</td>
                       <td>{institution.contactInfo?.phone || 'Not provided'}</td>
+                      <td>{institution.location}</td>
                       <td>
                         <span style={{
                           padding: '0.25rem 0.5rem',

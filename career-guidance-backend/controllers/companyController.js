@@ -2,7 +2,7 @@ const { db } = require('../config/firebase');
 
 const getCompanyProfile = async (req, res) => {
   try {
-    const companyDoc = await db.collection('users').doc(req.user.uid).get();
+    const companyDoc = await db.collection('companies').doc(req.user.uid).get();
     
     if (!companyDoc.exists) {
       return res.status(404).json({ error: 'Company not found' });
@@ -47,7 +47,7 @@ const updateCompanyProfile = async (req, res) => {
     if (logoUrl !== undefined) updateData.logoUrl = logoUrl;
     if (website !== undefined) updateData.website = website;
 
-    await db.collection('users').doc(req.user.uid).update(updateData);
+    await db.collection('companies').doc(req.user.uid).update(updateData);
 
     res.json({ message: 'Profile updated successfully' });
   } catch (error) {
@@ -56,6 +56,7 @@ const updateCompanyProfile = async (req, res) => {
   }
 };
 
+// FIXED: Job creation with proper company name
 const createJob = async (req, res) => {
   try {
     const { 
@@ -73,14 +74,15 @@ const createJob = async (req, res) => {
       requiredSkills
     } = req.body;
     
-    // Get company name from profile
-    const companyDoc = await db.collection('users').doc(req.user.uid).get();
+    // Get company name from profile - FIXED: Use correct field names
+    const companyDoc = await db.collection('companies').doc(req.user.uid).get();
     if (!companyDoc.exists) {
       return res.status(404).json({ error: 'Company not found' });
     }
     
     const companyData = companyDoc.data();
-    const companyName = companyData.companyName || 'Unknown Company';
+    // FIXED: Use correct field names for company name
+    const companyName = companyData.name || companyData.companyName || 'Unknown Company';
     
     const jobData = {
       title: title || '',
@@ -96,7 +98,7 @@ const createJob = async (req, res) => {
       minWorkExperience: minWorkExperience ? parseInt(minWorkExperience) : 0,
       requiredSkills: Array.isArray(requiredSkills) ? requiredSkills.filter(skill => skill.trim() !== '') : [],
       companyId: req.user.uid,
-      companyName: companyName,
+      companyName: companyName, // FIXED: This will now have the correct company name
       createdAt: new Date(),
       updatedAt: new Date(),
       active: true,
@@ -353,7 +355,7 @@ const getInterviewReadyCandidates = async (req, res) => {
 const getCompanyDashboard = async (req, res) => {
   try {
     // Get company profile
-    const companyDoc = await db.collection('users').doc(req.user.uid).get();
+    const companyDoc = await db.collection('companies').doc(req.user.uid).get();
     if (!companyDoc.exists) {
       return res.status(404).json({ error: 'Company not found' });
     }

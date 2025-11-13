@@ -1,5 +1,6 @@
 const { db } = require('../config/firebase');
 
+// FIXED: Get company from correct collection
 const getAllJobs = async (req, res) => {
   try {
     const jobsSnapshot = await db.collection('jobs')
@@ -9,12 +10,22 @@ const getAllJobs = async (req, res) => {
     const jobs = [];
     for (const doc of jobsSnapshot.docs) {
       const job = doc.data();
-      const companyDoc = await db.collection('users').doc(job.companyId).get();
+      
+      // FIXED: Get company from companies collection instead of users
+      let companyData = {};
+      try {
+        const companyDoc = await db.collection('companies').doc(job.companyId).get();
+        if (companyDoc.exists) {
+          companyData = companyDoc.data();
+        }
+      } catch (error) {
+        console.log('Company not found in companies collection');
+      }
       
       jobs.push({
         id: doc.id,
         ...job,
-        company: companyDoc.data()
+        company: companyData
       });
     }
 
@@ -24,6 +35,7 @@ const getAllJobs = async (req, res) => {
   }
 };
 
+// FIXED: Get company from correct collection
 const getJob = async (req, res) => {
   try {
     const { jobId } = req.params;
@@ -35,13 +47,23 @@ const getJob = async (req, res) => {
     }
 
     const job = jobDoc.data();
-    const companyDoc = await db.collection('users').doc(job.companyId).get();
+    
+    // FIXED: Get company from companies collection instead of users
+    let companyData = {};
+    try {
+      const companyDoc = await db.collection('companies').doc(job.companyId).get();
+      if (companyDoc.exists) {
+        companyData = companyDoc.data();
+      }
+    } catch (error) {
+      console.log('Company not found in companies collection');
+    }
 
     res.json({
       job: {
         id: jobDoc.id,
         ...job,
-        company: companyDoc.data()
+        company: companyData
       }
     });
   } catch (error) {

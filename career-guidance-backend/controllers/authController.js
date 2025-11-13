@@ -3,9 +3,14 @@ const { registerValidation } = require('../middleware/validation');
 
 const register = async (req, res) => {
   try {
+    console.log('Registration request received:', req.body); // Debug log
+
     // Validate data
     const { error } = registerValidation(req.body);
-    if (error) return res.status(400).json({ error: error.details[0].message });
+    if (error) {
+      console.log('Validation error:', error.details[0].message);
+      return res.status(400).json({ error: error.details[0].message });
+    }
 
     const { email, password, firstName, lastName, role, organizationName, contactPhone, contactEmail, location, slogan, description, dateOfBirth, phone, highSchool, graduationYear } = req.body;
 
@@ -14,7 +19,7 @@ const register = async (req, res) => {
       email,
       password,
       displayName: role === 'student' || role === 'admin' ? `${firstName} ${lastName}` : organizationName,
-      emailVerified: true
+      emailVerified: false
     });
 
     const timestamp = new Date();
@@ -41,7 +46,7 @@ const register = async (req, res) => {
       await db.collection('users').doc(userRecord.uid).set(userData);
 
     } else if (role === 'institution') {
-      // Store institution in institutions collection
+      // Store institution ONLY in institutions collection
       const institutionData = {
         uid: userRecord.uid,
         email,
@@ -59,20 +64,8 @@ const register = async (req, res) => {
 
       await db.collection('institutions').doc(userRecord.uid).set(institutionData);
 
-      // Also create a minimal user record for authentication purposes
-      const userData = {
-        uid: userRecord.uid,
-        email,
-        role,
-        institutionId: userRecord.uid, // Reference to the institution document
-        createdAt: timestamp,
-        updatedAt: timestamp
-      };
-
-      await db.collection('users').doc(userRecord.uid).set(userData);
-
     } else if (role === 'company') {
-      // Store company in companies collection
+      // Store company ONLY in companies collection
       const companyData = {
         uid: userRecord.uid,
         email,
@@ -90,18 +83,6 @@ const register = async (req, res) => {
 
       await db.collection('companies').doc(userRecord.uid).set(companyData);
 
-      // Also create a minimal user record for authentication purposes
-      const userData = {
-        uid: userRecord.uid,
-        email,
-        role,
-        companyId: userRecord.uid, // Reference to the company document
-        createdAt: timestamp,
-        updatedAt: timestamp
-      };
-
-      await db.collection('users').doc(userRecord.uid).set(userData);
-
     } else if (role === 'admin') {
       // Store admin in users collection
       const userData = {
@@ -117,6 +98,8 @@ const register = async (req, res) => {
       await db.collection('users').doc(userRecord.uid).set(userData);
     }
 
+    console.log('User registered successfully:', userRecord.uid);
+
     res.status(201).json({
       message: 'User registered successfully',
       user: {
@@ -126,87 +109,95 @@ const register = async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('Registration error:', error);
     res.status(400).json({ error: error.message });
   }
 };
 
 const login = async (req, res) => {
   try {
-    const { idToken } = req.body;
+    const { email, password } = req.body;
     
-    if (!idToken) {
-      return res.status(400).json({ error: 'ID token is required' });
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
     }
 
-    // Verify the ID token
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    // Get user by email
+    const userRecord = await admin.auth().getUserByEmail(email);
     
-    // Get user data from Firestore based on role
-    const userDoc = await db.collection('users').doc(decodedToken.uid).get();
-    
-    if (!userDoc.exists) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+    // Create a custom token for the user
+    const customToken = await admin.auth().createCustomToken(userRecord.uid);
 
-    const userData = userDoc.data();
-    let additionalData = {};
+    let userData = null;
+    let collectionName = '';
 
-    // Get role-specific data
-    if (userData.role === 'institution') {
-      const institutionDoc = await db.collection('institutions').doc(decodedToken.uid).get();
-      if (institutionDoc.exists) {
-        additionalData = institutionDoc.data();
-      }
-    } else if (userData.role === 'company') {
-      const companyDoc = await db.collection('companies').doc(decodedToken.uid).get();
+    // Determine which collection to query based on user type
+    const institutionDoc = await db.collection('institutions').doc(userRecord.uid).get();
+    if (institutionDoc.exists) {
+      userData = institutionDoc.data();
+      collectionName = 'institutions';
+    } else {
+      const companyDoc = await db.collection('companies').doc(userRecord.uid).get();
       if (companyDoc.exists) {
-        additionalData = companyDoc.data();
+        userData = companyDoc.data();
+        collectionName = 'companies';
+      } else {
+        const userDoc = await db.collection('users').doc(userRecord.uid).get();
+        if (userDoc.exists) {
+          userData = userDoc.data();
+          collectionName = 'users';
+        }
       }
+    }
+
+    if (!userData) {
+      return res.status(404).json({ error: 'User not found in any collection' });
     }
 
     res.json({
       message: 'Login successful',
       user: {
-        uid: decodedToken.uid,
-        email: decodedToken.email,
+        uid: userRecord.uid,
+        email: userRecord.email,
         ...userData,
-        ...additionalData
-      }
+        collection: collectionName
+      },
+      token: customToken
     });
   } catch (error) {
-    res.status(401).json({ error: 'Invalid token' });
+    console.error('Login error:', error);
+    res.status(401).json({ error: 'Invalid email or password' });
   }
 };
 
 const getProfile = async (req, res) => {
   try {
-    const userDoc = await db.collection('users').doc(req.user.uid).get();
-    
-    if (!userDoc.exists) {
+    let userData = null;
+
+    // Check institutions collection first
+    const institutionDoc = await db.collection('institutions').doc(req.user.uid).get();
+    if (institutionDoc.exists) {
+      userData = institutionDoc.data();
+    } else {
+      // Check companies collection
+      const companyDoc = await db.collection('companies').doc(req.user.uid).get();
+      if (companyDoc.exists) {
+        userData = companyDoc.data();
+      } else {
+        // Check users collection (students/admins)
+        const userDoc = await db.collection('users').doc(req.user.uid).get();
+        if (userDoc.exists) {
+          userData = userDoc.data();
+        }
+      }
+    }
+
+    if (!userData) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const userData = userDoc.data();
-    let additionalData = {};
-
-    // Get role-specific data
-    if (userData.role === 'institution') {
-      const institutionDoc = await db.collection('institutions').doc(req.user.uid).get();
-      if (institutionDoc.exists) {
-        additionalData = institutionDoc.data();
-      }
-    } else if (userData.role === 'company') {
-      const companyDoc = await db.collection('companies').doc(req.user.uid).get();
-      if (companyDoc.exists) {
-        additionalData = companyDoc.data();
-      }
-    }
-
     res.json({ 
-      user: {
-        ...userData,
-        ...additionalData
-      } 
+      user: userData
     });
   } catch (error) {
     res.status(500).json({ error: error.message });

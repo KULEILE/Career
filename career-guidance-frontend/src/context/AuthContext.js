@@ -1,13 +1,11 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
-import { auth, db } from '../services/firebase';
-import {
-  onAuthStateChanged,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signOut,
-  updateProfile
+import { auth } from '../services/firebase';
+import { 
+  onAuthStateChanged, 
+  signOut, 
+  signInWithCustomToken 
 } from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { registerUser, loginUser, getUserProfile } from '../services/api';
 
 const AuthContext = createContext();
 
@@ -18,84 +16,60 @@ export const AuthProvider = ({ children }) => {
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Register function
+  // --------------------------
+  // REGISTER FUNCTION
+  // --------------------------
   const register = async (formData) => {
-    const { email, password, firstName, lastName, role, institutionName, companyName } = formData;
-
     try {
-      // Create user in Firebase Auth
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-
-      // Set display name
-      await updateProfile(user, {
-        displayName: `${firstName} ${lastName}`
-      });
-
-      // Prepare user data for Firestore
-      const userData = {
-        uid: user.uid,
-        email: email,
-        firstName: firstName,
-        lastName: lastName,
-        role: role,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        approved: role === 'admin' // Auto-approve admins
-      };
-
-      // Add role-specific data
-      if (role === 'institution' && institutionName) {
-        userData.institutionName = institutionName;
-        userData.approved = false; // Institutions need approval
+      if (formData.role === 'admin' && !formData.adminSecret) {
+        throw new Error('Admin secret is required for admin registration');
       }
 
-      if (role === 'company' && companyName) {
-        userData.companyName = companyName;
-        userData.approved = false; // Companies need approval
+      const response = await registerUser(formData);
+
+      if (response.data.token) {
+        const userCredential = await signInWithCustomToken(auth, response.data.token);
+        setCurrentUser(userCredential.user);
+
+        const profile = await fetchUserProfile(userCredential.user);
+        setUserProfile(profile || response.data.user);
       }
 
-      if (role === 'student') {
-        userData.subjects = [];
-        userData.hasTranscript = false;
-      }
-
-      // Save user data to Firestore
-      await setDoc(doc(db, 'users', user.uid), userData);
-
-      // Update local state
-      setCurrentUser(user);
-      setUserProfile(userData);
-
-      // Store token
-      const token = await user.getIdToken();
-      localStorage.setItem('token', token);
-
-      return user;
+      return response.data;
     } catch (error) {
-      console.error('Registration error:', error);
-      throw error;
+      console.error('Registration error:', error.response?.data || error.message || error);
+      throw new Error(error.response?.data?.error || error.message || 'Registration failed');
     }
   };
 
-  // Login function
+  // --------------------------
+  // LOGIN FUNCTION
+  // --------------------------
   const login = async (email, password) => {
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-      
-      // Store token
-      const token = await user.getIdToken();
-      localStorage.setItem('token', token);
-      
-      return user;
+      const response = await loginUser({ email, password });
+
+      if (response.data.token) {
+        const userCredential = await signInWithCustomToken(auth, response.data.token);
+        setCurrentUser(userCredential.user);
+
+        const profile = await fetchUserProfile(userCredential.user);
+        setUserProfile(profile || response.data.user);
+
+        const token = await userCredential.user.getIdToken();
+        localStorage.setItem('token', token);
+      }
+
+      return response.data;
     } catch (error) {
-      console.error('Login error:', error);
-      throw error;
+      console.error('Login error:', error.response?.data || error.message || error);
+      throw new Error(error.response?.data?.error || error.message || 'Login failed');
     }
   };
 
-  // Logout function
+  // --------------------------
+  // LOGOUT FUNCTION
+  // --------------------------
   const logout = async () => {
     try {
       await signOut(auth);
@@ -108,49 +82,63 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Fetch user profile from Firestore
-  const fetchUserProfile = async (uid) => {
+  // --------------------------
+  // FETCH USER PROFILE
+  // --------------------------
+  const fetchUserProfile = async (user = auth.currentUser) => {
+    if (!user) return null;
     try {
-      const userDoc = await getDoc(doc(db, 'users', uid));
-      if (userDoc.exists()) {
-        return userDoc.data();
+      const token = await user.getIdToken();
+      if (!token) return null;
+
+      const response = await getUserProfile(token);
+
+      if (response.data && response.data.user) {
+        return response.data.user;
       }
       return null;
     } catch (error) {
-      console.error('Error fetching user profile:', error);
+      if (error.response) {
+        console.error('Server error fetching profile:', {
+          status: error.response.status,
+          data: error.response.data,
+        });
+      } else if (error.request) {
+        console.error('Network error fetching profile - no response received:', error.request);
+      } else {
+        console.error('Error setting up profile request:', error.message);
+      }
       return null;
     }
   };
 
-  // Update user profile
+  // --------------------------
+  // UPDATE USER PROFILE
+  // --------------------------
   const updateUserProfile = async (updates) => {
-    if (!currentUser) return;
-    
     try {
-      await setDoc(doc(db, 'users', currentUser.uid), {
-        ...updates,
-        updatedAt: new Date()
-      }, { merge: true });
-      
-      // Update local state
       setUserProfile(prev => ({ ...prev, ...updates }));
     } catch (error) {
-      console.error('Error updating user profile:', error);
+      console.error('Error updating profile:', error);
       throw error;
     }
   };
 
-  // Auth state listener
+  // --------------------------
+  // AUTH STATE LISTENER
+  // --------------------------
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setCurrentUser(user);
-        
-        // Fetch user profile from Firestore
-        const profile = await fetchUserProfile(user.uid);
-        setUserProfile(profile);
-        
-        // Update token
+        const profile = await fetchUserProfile(user);
+        setUserProfile(profile || {
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName || '',
+          role: 'unknown'
+        });
+
         const token = await user.getIdToken();
         localStorage.setItem('token', token);
       } else {
@@ -164,20 +152,34 @@ export const AuthProvider = ({ children }) => {
     return unsubscribe;
   }, []);
 
+  // --------------------------
+  // REFRESH USER PROFILE
+  // --------------------------
+  const refreshUserProfile = async () => {
+    if (!currentUser) return null;
+    try {
+      const profile = await fetchUserProfile();
+      if (profile) setUserProfile(profile);
+      return profile;
+    } catch (error) {
+      console.error('Error refreshing user profile:', error);
+      return null;
+    }
+  };
+
+  // --------------------------
+  // CONTEXT VALUE
+  // --------------------------
   const value = {
-    // State
     currentUser,
     userProfile,
     loading,
-    
-    // Actions
     register,
     login,
     logout,
     updateUserProfile,
-    fetchUserProfile,
-    
-    // Derived state
+    fetchUserProfile: refreshUserProfile,
+    refreshUserProfile,
     isAuthenticated: !!currentUser,
     userRole: userProfile?.role,
     isAdmin: userProfile?.role === 'admin',

@@ -1,18 +1,29 @@
 const { db } = require('../config/firebase');
 const { courseValidation } = require('../middleware/validation');
 
-// Get all courses
+// Get all courses - FIXED: Get institution from correct collection
 const getAllCourses = async (req, res) => {
   try {
     const coursesSnapshot = await db.collection('courses').get();
     const courses = [];
     for (const doc of coursesSnapshot.docs) {
       const course = doc.data();
-      const institutionDoc = await db.collection('users').doc(course.institutionId).get();
+      
+      // FIXED: Get institution from institutions collection instead of users
+      let institutionData = {};
+      try {
+        const institutionDoc = await db.collection('institutions').doc(course.institutionId).get();
+        if (institutionDoc.exists) {
+          institutionData = institutionDoc.data();
+        }
+      } catch (error) {
+        console.log('Institution not found in institutions collection');
+      }
+      
       courses.push({
         id: doc.id,
         ...course,
-        institution: institutionDoc.data()
+        institution: institutionData
       });
     }
     res.json({ courses });
@@ -21,7 +32,7 @@ const getAllCourses = async (req, res) => {
   }
 };
 
-// Get single course
+// Get single course - FIXED: Get institution from correct collection
 const getCourse = async (req, res) => {
   try {
     const { courseId } = req.params;
@@ -29,9 +40,24 @@ const getCourse = async (req, res) => {
     if (!courseDoc.exists) return res.status(404).json({ error: 'Course not found' });
 
     const course = courseDoc.data();
-    const institutionDoc = await db.collection('users').doc(course.institutionId).get();
+    
+    // FIXED: Get institution from institutions collection instead of users
+    let institutionData = {};
+    try {
+      const institutionDoc = await db.collection('institutions').doc(course.institutionId).get();
+      if (institutionDoc.exists) {
+        institutionData = institutionDoc.data();
+      }
+    } catch (error) {
+      console.log('Institution not found in institutions collection');
+    }
+    
     res.json({
-      course: { id: courseDoc.id, ...course, institution: institutionDoc.data() }
+      course: { 
+        id: courseDoc.id, 
+        ...course, 
+        institution: institutionData 
+      }
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -54,15 +80,23 @@ const getInstitutionCourses = async (req, res) => {
   }
 };
 
-// Create new course
+// Create new course - FIXED: Added institution name
 const createCourse = async (req, res) => {
   try {
     const { error } = courseValidation(req.body);
     if (error) return res.status(400).json({ error: error.details[0].message });
 
+    // Get institution name to include in course data
+    const institutionDoc = await db.collection('institutions').doc(req.user.uid).get();
+    if (!institutionDoc.exists) return res.status(404).json({ error: 'Institution not found' });
+    
+    const institutionData = institutionDoc.data();
+    const institutionName = institutionData.name || institutionData.institutionName || 'Unknown Institution';
+
     const courseData = {
       ...req.body,
       institutionId: req.user.uid,
+      institutionName: institutionName, // Add institution name to course
       createdAt: new Date(),
       updatedAt: new Date()
     };

@@ -1,4 +1,3 @@
-// middleware/auth.js
 const { admin, db } = require('../config/firebase');
 
 const authenticate = async (req, res, next) => {
@@ -11,13 +10,36 @@ const authenticate = async (req, res, next) => {
     const decodedToken = await admin.auth().verifyIdToken(token);
     req.user = { uid: decodedToken.uid, email: decodedToken.email };
 
-    const userDoc = await db.collection('users').doc(decodedToken.uid).get();
-    if (!userDoc.exists) {
+    let userData = null;
+    let collectionName = '';
+
+    // Check all collections to find the user
+    const institutionDoc = await db.collection('institutions').doc(decodedToken.uid).get();
+    if (institutionDoc.exists) {
+      userData = institutionDoc.data();
+      collectionName = 'institutions';
+    } else {
+      const companyDoc = await db.collection('companies').doc(decodedToken.uid).get();
+      if (companyDoc.exists) {
+        userData = companyDoc.data();
+        collectionName = 'companies';
+      } else {
+        const userDoc = await db.collection('users').doc(decodedToken.uid).get();
+        if (userDoc.exists) {
+          userData = userDoc.data();
+          collectionName = 'users';
+        }
+      }
+    }
+
+    if (!userData) {
       return res.status(404).json({ error: 'User not found in database' });
     }
 
-    req.user.role = userDoc.data().role;
-    req.user.profile = userDoc.data();
+    req.user.role = userData.role;
+    req.user.profile = userData;
+    req.user.collection = collectionName; // Optional: for debugging
+
     next();
   } catch (error) {
     console.error('Authentication error:', error);

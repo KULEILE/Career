@@ -1,10 +1,13 @@
 const express = require('express');
+const router = express.Router();
 const {
   getDashboard,
   getInstitutions,
   getCompanies,
   approveCompany,
   suspendCompany,
+  approveInstitution,
+  suspendInstitution,
   getUsers,
   getReports,
   updateUser,
@@ -12,16 +15,28 @@ const {
 } = require('../controllers/adminController');
 const { authenticate, requireRole } = require('../middleware/auth');
 
-const router = express.Router();
+// Apply authentication and admin role check to all routes
+router.use(authenticate, requireRole(['admin']));
 
-router.get('/dashboard', authenticate, requireRole(['admin']), getDashboard);
-router.get('/institutions', authenticate, requireRole(['admin']), getInstitutions);
-router.get('/companies', authenticate, requireRole(['admin']), getCompanies);
-router.put('/companies/:companyId/approve', authenticate, requireRole(['admin']), approveCompany);
-router.put('/companies/:companyId/suspend', authenticate, requireRole(['admin']), suspendCompany);
-router.get('/users', authenticate, requireRole(['admin']), getUsers);
-router.put('/users/:userId', authenticate, requireRole(['admin']), updateUser);
-router.delete('/users/:userId', authenticate, requireRole(['admin']), deleteUser);
-router.get('/reports', authenticate, requireRole(['admin']), getReports);
+// Dashboard
+router.get('/dashboard', getDashboard);
+
+// Institutions
+router.get('/institutions', getInstitutions);
+router.put('/institutions/:institutionId/approve', approveInstitution);
+router.put('/institutions/:institutionId/suspend', suspendInstitution);
+
+// Companies
+router.get('/companies', getCompanies);
+router.put('/companies/:companyId/approve', approveCompany);
+router.put('/companies/:companyId/suspend', suspendCompany);
+
+// Users
+router.get('/users', getUsers);
+router.put('/users/:userId', updateUser);
+router.delete('/users/:userId', deleteUser);
+
+// Reports
+router.get('/reports', getReports);
 
 module.exports = router;

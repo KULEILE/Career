@@ -23,7 +23,9 @@ const Register = () => {
     contactEmail: '',
     location: '',
     slogan: '',
-    description: ''
+    description: '',
+    // Admin-specific fields
+    adminCode: ''
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -89,6 +91,12 @@ const Register = () => {
 
   const validateDescription = (description) => {
     return description.length >= 10 && description.length <= 500;
+  };
+
+  const validateAdminCode = (code) => {
+    // You can change this to match your admin registration code
+    const validAdminCodes = ['ADMIN123', 'SUPERADMIN2024', 'SYSTEM_ADMIN'];
+    return validAdminCodes.includes(code);
   };
 
   // Real-time validation handlers
@@ -327,6 +335,26 @@ const Register = () => {
     }
   };
 
+  const handleAdminCodeChange = (e) => {
+    const { value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      adminCode: value
+    }));
+
+    if (value && !validateAdminCode(value)) {
+      setFieldErrors(prev => ({
+        ...prev,
+        adminCode: 'Invalid admin registration code'
+      }));
+    } else {
+      setFieldErrors(prev => ({
+        ...prev,
+        adminCode: ''
+      }));
+    }
+  };
+
   const handleRoleChange = (e) => {
     const { value } = e.target;
     setFormData(prev => ({
@@ -338,7 +366,8 @@ const Register = () => {
       contactEmail: '',
       location: '',
       slogan: '',
-      description: ''
+      description: '',
+      adminCode: ''
     }));
   };
 
@@ -383,6 +412,9 @@ const Register = () => {
       case 'description':
         handleDescriptionChange(e);
         break;
+      case 'adminCode':
+        handleAdminCodeChange(e);
+        break;
       case 'role':
         handleRoleChange(e);
         break;
@@ -397,8 +429,8 @@ const Register = () => {
   const validateForm = () => {
     const errors = {};
 
-    // Basic validations - only require first/last name for student role
-    if (formData.role === 'student') {
+    // Basic validations - require first/last name for student and admin roles
+    if (formData.role === 'student' || formData.role === 'admin') {
       if (!validateName(formData.firstName)) {
         errors.firstName = 'First name is required and can only contain letters';
       }
@@ -423,6 +455,15 @@ const Register = () => {
     // Role-specific validations
     if ((formData.role === 'institution' || formData.role === 'company') && !formData.organizationName) {
       errors.organizationName = `${formData.role === 'institution' ? 'Institution' : 'Company'} name is required`;
+    }
+
+    // Admin-specific validations
+    if (formData.role === 'admin') {
+      if (!formData.adminCode) {
+        errors.adminCode = 'Admin registration code is required';
+      } else if (!validateAdminCode(formData.adminCode)) {
+        errors.adminCode = 'Invalid admin registration code';
+      }
     }
 
     // Institution/Company contact requirements
@@ -516,6 +557,9 @@ const Register = () => {
         case 'company':
           navigate('/company/dashboard');
           break;
+        case 'admin':
+          navigate('/admin/dashboard');
+          break;
         default:
           navigate('/student/dashboard');
       }
@@ -527,7 +571,7 @@ const Register = () => {
   };
 
   const hasErrors = Object.values(fieldErrors).some(error => error !== '');
-  const showPersonalNameFields = formData.role === 'student';
+  const showPersonalNameFields = formData.role === 'student' || formData.role === 'admin';
 
   return (
     <div className="container">
@@ -538,7 +582,7 @@ const Register = () => {
         <form onSubmit={handleSubmit}>
           {error && <div className="alert alert-error">{error}</div>}
           
-          {/* Only show first/last name fields for student role */}
+          {/* Show first/last name fields for student and admin roles */}
           {showPersonalNameFields && (
             <div className="row">
               <div className="col-6">
@@ -614,6 +658,7 @@ const Register = () => {
               <option value="student">Student</option>
               <option value="institution">Institution</option>
               <option value="company">Company</option>
+              <option value="admin">Administrator</option>
             </select>
           </div>
 
@@ -638,6 +683,30 @@ const Register = () => {
                   {fieldErrors.organizationName}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Admin-specific fields */}
+          {formData.role === 'admin' && (
+            <div className="form-group">
+              <label className="form-label">Admin Registration Code *</label>
+              <input
+                type="password"
+                name="adminCode"
+                className="form-control"
+                value={formData.adminCode}
+                onChange={handleChange}
+                required
+                placeholder="Enter admin registration code"
+              />
+              {fieldErrors.adminCode && (
+                <div style={{ color: '#dc3545', fontSize: '0.875rem', marginTop: '0.25rem' }}>
+                  {fieldErrors.adminCode}
+                </div>
+              )}
+              <small style={{ color: '#666666' }}>
+                Contact system administrator to get the registration code
+              </small>
             </div>
           )}
 

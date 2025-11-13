@@ -89,11 +89,13 @@ const registerValidation = (data) => {
       then: Joi.string().min(10).max(500).required(),
       otherwise: Joi.string().allow('').optional()
     })
-  }).with('password', 'confirmPassword');
+  }).with('password', 'confirmPassword')
+    .unknown(true); // ← ONLY ADDED THIS LINE
 
   return schema.validate(data);
 };
 
+// ALL OTHER VALIDATION FUNCTIONS REMAIN EXACTLY THE SAME
 const courseValidation = (data) => {
   const schema = Joi.object({
     name: Joi.string().min(2).max(100).required(),

@@ -17,16 +17,15 @@ const Landing = () => {
           getAllCourses(),
           getAllJobs()
         ]);
-        
+
         // Safe data extraction with fallbacks
         const coursesData = coursesResponse?.data?.courses || [];
         const jobsData = jobsResponse?.data?.jobs || [];
-        
+
         setCourses(coursesData.slice(0, 6));
         setJobs(jobsData.slice(0, 6));
       } catch (error) {
         console.error('Error fetching data:', error);
-        // Set empty arrays on error to prevent further issues
         setCourses([]);
         setJobs([]);
       } finally {
@@ -51,7 +50,7 @@ const Landing = () => {
         <p style={{ fontSize: '1.25rem', marginBottom: '2rem', color: '#666666' }}>
           Discover higher learning institutions, find your perfect course, and launch your career in Lesotho
         </p>
-        
+
         {!isAuthenticated ? (
           <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
             <Link to="/register" className="btn btn-primary" style={{ fontSize: '1.1rem', padding: '1rem 2rem' }}>
@@ -64,8 +63,8 @@ const Landing = () => {
         ) : (
           <div>
             <h3>Welcome back! Continue to your dashboard</h3>
-            <Link 
-              to={`/${userRole}/dashboard`} 
+            <Link
+              to={`/${userRole}/dashboard`}
               className="btn btn-primary"
               style={{ fontSize: '1.1rem', padding: '1rem 2rem', marginTop: '1rem' }}
             >
@@ -109,12 +108,16 @@ const Landing = () => {
               <div key={course.id} className="col-6">
                 <div className="card">
                   <h4>{course.name || 'Unnamed Course'}</h4>
-                  <p>{course.institution?.institutionName || 'Unknown Institution'}</p>
+                  {/* ✅ Updated to use institutionName directly */}
+                  <p>{course.institutionName || 'Unknown Institution'}</p>
                   <p style={{ color: '#666666', fontSize: '0.9rem' }}>
                     {course.description ? `${course.description.substring(0, 100)}...` : 'No description available'}
                   </p>
                   <div style={{ marginTop: '1rem' }}>
                     <span style={{ fontWeight: 'bold' }}>Duration:</span> {course.duration || 'Not specified'}
+                  </div>
+                  <div style={{ marginTop: '0.5rem' }}>
+                    <span style={{ fontWeight: 'bold' }}>Tuition Fee:</span> {course.tuitionFee || 'Not specified'}
                   </div>
                 </div>
               </div>
@@ -143,7 +146,8 @@ const Landing = () => {
               <div key={job.id} className="col-6">
                 <div className="card">
                   <h4>{job.title || 'Untitled Job'}</h4>
-                  <p>{job.company?.companyName || 'Unknown Company'}</p>
+                  {/* ✅ Updated to use companyName directly */}
+                  <p>{job.companyName || 'Unknown Company'}</p>
                   <p style={{ color: '#666666', fontSize: '0.9rem' }}>
                     {job.description ? `${job.description.substring(0, 100)}...` : 'No description available'}
                   </p>

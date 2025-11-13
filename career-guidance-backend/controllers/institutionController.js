@@ -6,10 +6,10 @@ const { courseValidation } = require('../middleware/validation');
 // Get institution profile
 const getInstitutionProfile = async (req, res) => {
   try {
-    const userDoc = await db.collection('users').doc(req.user.uid).get();
-    if (!userDoc.exists) return res.status(404).json({ error: 'Institution not found' });
+    const institutionDoc = await db.collection('institutions').doc(req.user.uid).get();
+    if (!institutionDoc.exists) return res.status(404).json({ error: 'Institution not found' });
 
-    res.json({ institution: { id: userDoc.id, ...userDoc.data() } });
+    res.json({ institution: { id: institutionDoc.id, ...institutionDoc.data() } });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -18,12 +18,12 @@ const getInstitutionProfile = async (req, res) => {
 // Update institution profile
 const updateInstitutionProfile = async (req, res) => {
   try {
-    const userRef = db.collection('users').doc(req.user.uid);
-    const userDoc = await userRef.get();
-    if (!userDoc.exists) return res.status(404).json({ error: 'Institution not found' });
+    const institutionRef = db.collection('institutions').doc(req.user.uid);
+    const institutionDoc = await institutionRef.get();
+    if (!institutionDoc.exists) return res.status(404).json({ error: 'Institution not found' });
 
-    await userRef.update({ ...req.body, updatedAt: new Date() });
-    const updatedDoc = await userRef.get();
+    await institutionRef.update({ ...req.body, updatedAt: new Date() });
+    const updatedDoc = await institutionRef.get();
     res.json({ success: true, institution: { id: updatedDoc.id, ...updatedDoc.data() }, message: 'Profile updated successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -46,15 +46,23 @@ const getCourses = async (req, res) => {
   }
 };
 
-// Create a new course
+// Create a new course - FIXED: Added institution name
 const createCourse = async (req, res) => {
   try {
     const { error } = courseValidation(req.body);
     if (error) return res.status(400).json({ error: error.details[0].message });
 
+    // Get institution name to include in course data
+    const institutionDoc = await db.collection('institutions').doc(req.user.uid).get();
+    if (!institutionDoc.exists) return res.status(404).json({ error: 'Institution not found' });
+    
+    const institutionData = institutionDoc.data();
+    const institutionName = institutionData.name || institutionData.institutionName || 'Unknown Institution';
+
     const courseData = {
       ...req.body,
       institutionId: req.user.uid,
+      institutionName: institutionName, // Add institution name to course
       createdAt: new Date(),
       updatedAt: new Date()
     };
