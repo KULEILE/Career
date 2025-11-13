@@ -9,9 +9,10 @@ class Course {
       minGrades: {}
     };
     this.institutionId = data.institutionId;
+    this.institutionName = data.institutionName || ''; // ✅ Add institutionName field
     this.faculty = data.faculty;
-    this.tuitionFee = data.tuitionFee;
-    intakePeriod = data.intakePeriod;
+    this.tuitionFee = data.tuitionFee || 'Not specified'; // ✅ Ensure default value
+    this.intakePeriod = data.intakePeriod; // ✅ Fixed: removed duplicate declaration
     this.applicationDeadline = data.applicationDeadline;
     this.availableSeats = data.availableSeats;
     this.createdAt = data.createdAt || new Date();
@@ -26,6 +27,7 @@ class Course {
       duration: this.duration,
       requirements: this.requirements,
       institutionId: this.institutionId,
+      institutionName: this.institutionName, // ✅ Include in Firestore
       faculty: this.faculty,
       tuitionFee: this.tuitionFee,
       intakePeriod: this.intakePeriod,

@@ -1,38 +1,53 @@
 const { db } = require('../config/firebase');
 const { courseValidation } = require('../middleware/validation');
 
-// Get all courses - FIXED: Get institution from correct collection
+// Get all courses - FIXED: Include both direct fields and nested institution
 const getAllCourses = async (req, res) => {
   try {
     const coursesSnapshot = await db.collection('courses').get();
     const courses = [];
+    
     for (const doc of coursesSnapshot.docs) {
       const course = doc.data();
       
-      // FIXED: Get institution from institutions collection instead of users
+      // Get institution data
       let institutionData = {};
+      let institutionName = '';
+      let institutionContact = {};
+      
       try {
         const institutionDoc = await db.collection('institutions').doc(course.institutionId).get();
         if (institutionDoc.exists) {
           institutionData = institutionDoc.data();
+          institutionName = institutionData.name || institutionData.institutionName || 'Unknown Institution';
+          institutionContact = institutionData.contactInfo || {};
         }
       } catch (error) {
-        console.log('Institution not found in institutions collection');
+        console.log('Institution not found for course:', course.institutionId);
       }
       
       courses.push({
         id: doc.id,
         ...course,
+        // ✅ DIRECT FIELDS for frontend compatibility
+        institutionName: institutionName,
+        institutionEmail: institutionContact.email || '',
+        institutionPhone: institutionContact.phone || '',
+        // Ensure tuitionFee is always included
+        tuitionFee: course.tuitionFee || 'Not specified',
+        // Keep the nested institution for other uses
         institution: institutionData
       });
     }
+    
     res.json({ courses });
   } catch (error) {
+    console.error('Error in getAllCourses:', error);
     res.status(500).json({ error: error.message });
   }
 };
 
-// Get single course - FIXED: Get institution from correct collection
+// Get single course - FIXED: Include both direct fields and nested institution
 const getCourse = async (req, res) => {
   try {
     const { courseId } = req.params;
@@ -41,25 +56,38 @@ const getCourse = async (req, res) => {
 
     const course = courseDoc.data();
     
-    // FIXED: Get institution from institutions collection instead of users
+    // Get institution data
     let institutionData = {};
+    let institutionName = '';
+    let institutionContact = {};
+    
     try {
       const institutionDoc = await db.collection('institutions').doc(course.institutionId).get();
       if (institutionDoc.exists) {
         institutionData = institutionDoc.data();
+        institutionName = institutionData.name || institutionData.institutionName || 'Unknown Institution';
+        institutionContact = institutionData.contactInfo || {};
       }
     } catch (error) {
-      console.log('Institution not found in institutions collection');
+      console.log('Institution not found for course:', course.institutionId);
     }
     
     res.json({
       course: { 
         id: courseDoc.id, 
-        ...course, 
+        ...course,
+        // ✅ DIRECT FIELDS for frontend compatibility
+        institutionName: institutionName,
+        institutionEmail: institutionContact.email || '',
+        institutionPhone: institutionContact.phone || '',
+        // Ensure tuitionFee is always included
+        tuitionFee: course.tuitionFee || 'Not specified',
+        // Keep the nested institution for other uses
         institution: institutionData 
       }
     });
   } catch (error) {
+    console.error('Error in getCourse:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -73,20 +101,47 @@ const getInstitutionCourses = async (req, res) => {
       .get();
 
     const courses = [];
-    coursesSnapshot.forEach(doc => courses.push({ id: doc.id, ...doc.data() }));
+    
+    // Get institution data once
+    let institutionData = {};
+    let institutionName = '';
+    
+    try {
+      const institutionDoc = await db.collection('institutions').doc(institutionId).get();
+      if (institutionDoc.exists) {
+        institutionData = institutionDoc.data();
+        institutionName = institutionData.name || institutionData.institutionName || 'Unknown Institution';
+      }
+    } catch (error) {
+      console.log('Institution not found:', institutionId);
+    }
+    
+    coursesSnapshot.forEach(doc => {
+      const course = doc.data();
+      courses.push({ 
+        id: doc.id, 
+        ...course,
+        // ✅ Add direct institution name for consistency
+        institutionName: institutionName,
+        // Ensure tuitionFee is included
+        tuitionFee: course.tuitionFee || 'Not specified'
+      });
+    });
+    
     res.json({ courses });
   } catch (error) {
+    console.error('Error in getInstitutionCourses:', error);
     res.status(500).json({ error: error.message });
   }
 };
 
-// Create new course - FIXED: Added institution name
+// Create new course - FIXED: Ensure all required fields are included
 const createCourse = async (req, res) => {
   try {
     const { error } = courseValidation(req.body);
     if (error) return res.status(400).json({ error: error.details[0].message });
 
-    // Get institution name to include in course data
+    // Get institution data to include in course
     const institutionDoc = await db.collection('institutions').doc(req.user.uid).get();
     if (!institutionDoc.exists) return res.status(404).json({ error: 'Institution not found' });
     
@@ -96,14 +151,20 @@ const createCourse = async (req, res) => {
     const courseData = {
       ...req.body,
       institutionId: req.user.uid,
-      institutionName: institutionName, // Add institution name to course
+      institutionName: institutionName, // ✅ Add institution name directly
       createdAt: new Date(),
-      updatedAt: new Date()
+      updatedAt: new Date(),
+      // Ensure tuitionFee is always set
+      tuitionFee: req.body.tuitionFee || 'Not specified'
     };
 
     const courseRef = await db.collection('courses').add(courseData);
-    res.status(201).json({ message: 'Course created successfully', courseId: courseRef.id });
+    res.status(201).json({ 
+      message: 'Course created successfully', 
+      courseId: courseRef.id 
+    });
   } catch (error) {
+    console.error('Error in createCourse:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -122,10 +183,21 @@ const updateCourse = async (req, res) => {
     const course = courseDoc.data();
     if (course.institutionId !== req.user.uid) return res.status(403).json({ error: 'Access denied' });
 
-    await courseRef.update({ ...req.body, updatedAt: new Date() });
+    await courseRef.update({ 
+      ...req.body, 
+      updatedAt: new Date(),
+      // Ensure tuitionFee is updated
+      tuitionFee: req.body.tuitionFee || course.tuitionFee || 'Not specified'
+    });
+    
     const updatedDoc = await courseRef.get();
-    res.json({ success: true, course: { id: updatedDoc.id, ...updatedDoc.data() }, message: 'Course updated successfully' });
+    res.json({ 
+      success: true, 
+      course: { id: updatedDoc.id, ...updatedDoc.data() }, 
+      message: 'Course updated successfully' 
+    });
   } catch (error) {
+    console.error('Error in updateCourse:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -144,6 +216,7 @@ const deleteCourse = async (req, res) => {
     await courseRef.delete();
     res.json({ success: true, message: 'Course deleted successfully' });
   } catch (error) {
+    console.error('Error in deleteCourse:', error);
     res.status(500).json({ error: error.message });
   }
 };
