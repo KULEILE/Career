@@ -80,7 +80,7 @@ const StudentProfile = () => {
   const availableSubjects = [
     'Mathematics', 'English', 'Physics', 'Chemistry', 'Biology',
     'History', 'Geography', 'Accounting', 'Economics', 'Business Studies',
-    'Computer Science', 'Agriculture', 'Art', 'Music', 'Physical Education'
+    'Computer Science', 'Agriculture', 'Music', 'Sesotho'
   ];
 
   const grades = ['A', 'B', 'C', 'D', 'E', 'F'];
