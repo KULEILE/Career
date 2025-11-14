@@ -14,14 +14,25 @@ const { authenticate, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
 
-router.get('/profile', authenticate, requireRole(['company']), getCompanyProfile);
-router.put('/profile', authenticate, requireRole(['company']), updateCompanyProfile);
-router.post('/jobs', authenticate, requireRole(['company']), createJob);
-router.get('/jobs', authenticate, requireRole(['company']), getJobs);
-router.get('/jobs/:jobId/applicants', authenticate, requireRole(['company']), getApplicants);
-router.get('/jobs/:jobId/qualified-applicants', authenticate, requireRole(['company']), getQualifiedApplicants);
-router.get('/candidates/interview-ready', authenticate, requireRole(['company']), getInterviewReadyCandidates);
-router.get('/dashboard', authenticate, requireRole(['company']), getCompanyDashboard);
-router.put('/applications/:applicationId/status', authenticate, requireRole(['company']), updateApplicationStatus);
+// All routes require company role
+router.use(authenticate);
+router.use(requireRole(['company']));
+
+// Company profile routes
+router.get('/profile', getCompanyProfile);
+router.put('/profile', updateCompanyProfile);
+
+// Job management routes
+router.post('/jobs', createJob);
+router.get('/jobs', getJobs);
+router.get('/jobs/:jobId/applicants', getApplicants);
+router.get('/jobs/:jobId/qualified-applicants', getQualifiedApplicants);
+
+// Candidate management routes
+router.get('/candidates/interview-ready', getInterviewReadyCandidates);
+router.put('/applications/:applicationId/status', updateApplicationStatus);
+
+// Dashboard route
+router.get('/dashboard', getCompanyDashboard);
 
 module.exports = router;

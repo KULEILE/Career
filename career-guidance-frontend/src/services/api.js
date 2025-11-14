@@ -1,18 +1,66 @@
 import axios from 'axios';
+import { auth } from './firebase';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000, // Increased from 15000 to 30000 (30 seconds)
+  timeout: 30000,
 });
 
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+// Function to get current Firebase token
+const getCurrentToken = async () => {
+  const user = auth.currentUser;
+  if (user) {
+    try {
+      const token = await user.getIdToken();
+      return token;
+    } catch (error) {
+      console.error('Error getting Firebase token:', error);
+      return null;
     }
+  }
+  return null;
+};
+
+// Enhanced request interceptor with better error handling
+api.interceptors.request.use(
+  async (config) => {
+    try {
+      // Get fresh token from Firebase
+      const token = await getCurrentToken();
+      
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+        localStorage.setItem('token', token);
+      }
+      
+      // Add user role to headers for backend verification
+      const userRole = localStorage.getItem('userRole');
+      const userProfile = localStorage.getItem('userProfile');
+      
+      if (userRole) {
+        config.headers['X-User-Role'] = userRole;
+      }
+      
+      if (userProfile) {
+        try {
+          const profile = JSON.parse(userProfile);
+          config.headers['X-User-UID'] = profile.uid || '';
+        } catch (e) {
+          console.warn('Failed to parse user profile from localStorage');
+        }
+      }
+      
+      console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`, {
+        hasToken: !!token,
+        userRole: userRole || 'none'
+      });
+      
+    } catch (error) {
+      console.error('Request interceptor error:', error);
+    }
+    
     return config;
   },
   (error) => {
@@ -21,24 +69,75 @@ api.interceptors.request.use(
   }
 );
 
+// Enhanced response interceptor
 api.interceptors.response.use(
-  (response) => response,
-  (error) => {
+  (response) => {
+    console.log(`API Response Success: ${response.status} ${response.config.url}`);
+    return response;
+  },
+  async (error) => {
+    const originalRequest = error.config;
+    
+    console.log(`API Response Error: ${error.response?.status} ${error.config?.url}`, {
+      data: error.response?.data,
+      message: error.message
+    });
+    
+    // Handle token expiration (401)
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      console.log('Token expired or invalid, attempting to refresh...');
+      originalRequest._retry = true;
+      
+      try {
+        // Get fresh token from Firebase
+        const freshToken = await getCurrentToken();
+        if (freshToken) {
+          localStorage.setItem('token', freshToken);
+          originalRequest.headers.Authorization = `Bearer ${freshToken}`;
+          return api.request(originalRequest);
+        } else {
+          // No user logged in, redirect to login
+          localStorage.removeItem('token');
+          localStorage.removeItem('userRole');
+          localStorage.removeItem('userProfile');
+          if (window.location.pathname !== '/login') {
+            window.location.href = '/login';
+          }
+        }
+      } catch (refreshError) {
+        console.error('Token refresh failed:', refreshError);
+        localStorage.removeItem('token');
+        localStorage.removeItem('userRole');
+        localStorage.removeItem('userProfile');
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
+      }
+    }
+    
+    // Handle forbidden access (403) - role mismatch
+    if (error.response?.status === 403) {
+      console.error('Access forbidden - role verification failed');
+      const userRole = localStorage.getItem('userRole');
+      console.log(`Current user role: ${userRole}, required role for endpoint: company`);
+      
+      // You might want to show a user-friendly message here
+      if (!window.location.pathname.includes('/unauthorized')) {
+        // Optionally redirect to unauthorized page or show modal
+        console.warn('User does not have required permissions for this resource');
+      }
+    }
+
+    // Handle timeouts
     if (error.code === 'ECONNABORTED') {
       console.error('Request timeout:', error.config.url);
       return Promise.reject(new Error('Request timeout. Please check your connection.'));
     }
 
+    // Handle network errors
     if (!error.response) {
       console.error('Network error - no response received:', error.message);
       return Promise.reject(new Error('Network error. Please check your connection and ensure the server is running.'));
-    }
-
-    if (error.response.status === 401) {
-      localStorage.removeItem('token');
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login';
-      }
     }
 
     return Promise.reject(error);
@@ -48,14 +147,7 @@ api.interceptors.response.use(
 // -------------------- Auth API --------------------
 export const registerUser = (userData) => api.post('/auth/register', userData);
 export const loginUser = (loginData) => api.post('/auth/login', loginData);
-export const getUserProfile = (token) => {
-  if (!token) {
-    return Promise.reject(new Error('No token provided'));
-  }
-  return api.get('/auth/profile', {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-};
+export const getUserProfile = () => api.get('/auth/profile');
 
 // -------------------- Student API --------------------
 export const getStudentProfile = () => api.get('/students/profile');

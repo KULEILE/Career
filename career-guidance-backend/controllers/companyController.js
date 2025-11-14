@@ -1,20 +1,71 @@
 const { db } = require('../config/firebase');
 
+// Helper function to ensure company has role field
+const ensureCompanyRole = async (companyId) => {
+  try {
+    const companyDoc = await db.collection('companies').doc(companyId).get();
+    if (companyDoc.exists) {
+      const companyData = companyDoc.data();
+      // If role is missing, add it
+      if (!companyData.role) {
+        await db.collection('companies').doc(companyId).update({
+          role: 'company',
+          updatedAt: new Date()
+        });
+        console.log(`Added default 'company' role to company ${companyId}`);
+        return true;
+      }
+    }
+    return false;
+  } catch (error) {
+    console.error('Error ensuring company role:', error);
+    return false;
+  }
+};
+
 const getCompanyProfile = async (req, res) => {
   try {
+    console.log('Getting company profile for:', req.user.uid);
+    
     const companyDoc = await db.collection('companies').doc(req.user.uid).get();
     
     if (!companyDoc.exists) {
-      return res.status(404).json({ error: 'Company not found' });
+      return res.status(404).json({ error: 'Company not found. Please complete your company profile setup.' });
     }
 
     const companyData = companyDoc.data();
+    console.log('Raw company data from Firestore:', companyData);
+    
+    // Ensure company has role
+    if (!companyData.role) {
+      await ensureCompanyRole(req.user.uid);
+      companyData.role = 'company';
+    }
+    
+    // Transform field names to match frontend expectations
+    const transformedCompany = {
+      companyName: companyData.name || companyData.companyName || '',
+      description: companyData.description || '',
+      industry: companyData.industry || '',
+      contactInfo: {
+        email: companyData.contactEmail || companyData.email || '',
+        phone: companyData.contactPhone || ''
+      },
+      address: companyData.location || companyData.address || '',
+      logoUrl: companyData.logoUrl || '',
+      website: companyData.website || '',
+      slogan: companyData.slogan || '',
+      approved: companyData.approved !== false,
+      role: companyData.role || 'company',
+      uid: companyData.uid,
+      createdAt: companyData.createdAt,
+      updatedAt: companyData.updatedAt
+    };
+    
+    console.log('Transformed company data:', transformedCompany);
     
     res.json({ 
-      company: {
-        ...companyData,
-        approved: companyData.approved !== false
-      }
+      company: transformedCompany
     });
   } catch (error) {
     console.error('Error in getCompanyProfile:', error);
@@ -31,21 +82,42 @@ const updateCompanyProfile = async (req, res) => {
       contactInfo, 
       address, 
       logoUrl, 
-      website 
+      website,
+      slogan 
     } = req.body;
+    
+    console.log('Update profile request body:', req.body);
     
     const updateData = {
       updatedAt: new Date()
     };
 
-    // Only update fields that are provided
-    if (companyName !== undefined) updateData.companyName = companyName;
+    // Handle both field naming conventions
+    if (companyName !== undefined) {
+      updateData.name = companyName;
+      updateData.companyName = companyName;
+    }
     if (description !== undefined) updateData.description = description;
     if (industry !== undefined) updateData.industry = industry;
-    if (contactInfo !== undefined) updateData.contactInfo = contactInfo;
-    if (address !== undefined) updateData.address = address;
+    if (address !== undefined) updateData.location = address;
     if (logoUrl !== undefined) updateData.logoUrl = logoUrl;
     if (website !== undefined) updateData.website = website;
+    if (slogan !== undefined) updateData.slogan = slogan;
+    
+    // Handle contact info - support both structures
+    if (contactInfo !== undefined) {
+      if (typeof contactInfo === 'object') {
+        updateData.contactEmail = contactInfo.email;
+        updateData.contactPhone = contactInfo.phone;
+      } else {
+        updateData.contactEmail = contactInfo;
+      }
+    }
+
+    // Ensure role is set
+    updateData.role = 'company';
+
+    console.log('Update data to Firestore:', updateData);
 
     await db.collection('companies').doc(req.user.uid).update(updateData);
 
@@ -56,7 +128,6 @@ const updateCompanyProfile = async (req, res) => {
   }
 };
 
-// FIXED: Job creation with proper company name
 const createJob = async (req, res) => {
   try {
     const { 
@@ -74,14 +145,20 @@ const createJob = async (req, res) => {
       requiredSkills
     } = req.body;
     
-    // Get company name from profile - FIXED: Use correct field names
+    // Get company name from profile
     const companyDoc = await db.collection('companies').doc(req.user.uid).get();
     if (!companyDoc.exists) {
-      return res.status(404).json({ error: 'Company not found' });
+      return res.status(404).json({ error: 'Company not found. Please complete your company profile.' });
     }
     
     const companyData = companyDoc.data();
-    // FIXED: Use correct field names for company name
+    
+    // Ensure company has role field
+    if (!companyData.role) {
+      await ensureCompanyRole(req.user.uid);
+      companyData.role = 'company';
+    }
+    
     const companyName = companyData.name || companyData.companyName || 'Unknown Company';
     
     const jobData = {
@@ -98,7 +175,8 @@ const createJob = async (req, res) => {
       minWorkExperience: minWorkExperience ? parseInt(minWorkExperience) : 0,
       requiredSkills: Array.isArray(requiredSkills) ? requiredSkills.filter(skill => skill.trim() !== '') : [],
       companyId: req.user.uid,
-      companyName: companyName, // FIXED: This will now have the correct company name
+      companyName: companyName,
+      companyIndustry: companyData.industry || '',
       createdAt: new Date(),
       updatedAt: new Date(),
       active: true,
@@ -119,6 +197,8 @@ const createJob = async (req, res) => {
 
 const getJobs = async (req, res) => {
   try {
+    console.log('Getting jobs for company:', req.user.uid);
+    
     const jobsSnapshot = await db.collection('jobs')
       .where('companyId', '==', req.user.uid)
       .get();
@@ -153,12 +233,19 @@ const getApplicants = async (req, res) => {
   try {
     const { jobId } = req.params;
     
+    console.log(`Getting applicants for job: ${jobId}, company: ${req.user.uid}`);
+    
     const jobDoc = await db.collection('jobs').doc(jobId).get();
     if (!jobDoc.exists) {
       return res.status(404).json({ error: 'Job not found' });
     }
 
     const job = jobDoc.data();
+    
+    // Verify job belongs to this company
+    if (job.companyId !== req.user.uid) {
+      return res.status(403).json({ error: 'Access denied. This job does not belong to your company.' });
+    }
     
     // Get all applications for this job
     const jobApplicationsSnapshot = await db.collection('jobApplications')
@@ -213,12 +300,19 @@ const getQualifiedApplicants = async (req, res) => {
   try {
     const { jobId } = req.params;
     
+    console.log(`Getting qualified applicants for job: ${jobId}, company: ${req.user.uid}`);
+    
     const jobDoc = await db.collection('jobs').doc(jobId).get();
     if (!jobDoc.exists) {
       return res.status(404).json({ error: 'Job not found' });
     }
 
     const job = jobDoc.data();
+    
+    // Verify job belongs to this company
+    if (job.companyId !== req.user.uid) {
+      return res.status(403).json({ error: 'Access denied. This job does not belong to your company.' });
+    }
     
     // Get all applications for this job
     const jobApplicationsSnapshot = await db.collection('jobApplications')
@@ -274,6 +368,8 @@ const getQualifiedApplicants = async (req, res) => {
 
 const getInterviewReadyCandidates = async (req, res) => {
   try {
+    console.log('Getting interview-ready candidates for company:', req.user.uid);
+    
     // Get company jobs
     const jobsSnapshot = await db.collection('jobs')
       .where('companyId', '==', req.user.uid)
@@ -354,12 +450,39 @@ const getInterviewReadyCandidates = async (req, res) => {
 
 const getCompanyDashboard = async (req, res) => {
   try {
+    console.log('Getting dashboard for company:', req.user.uid);
+    
     // Get company profile
     const companyDoc = await db.collection('companies').doc(req.user.uid).get();
     if (!companyDoc.exists) {
-      return res.status(404).json({ error: 'Company not found' });
+      return res.status(404).json({ error: 'Company not found. Please complete your company profile setup.' });
     }
-    const company = companyDoc.data();
+    
+    const companyData = companyDoc.data();
+    console.log('Raw company data for dashboard:', companyData);
+    
+    // Ensure company has role field
+    if (!companyData.role) {
+      await ensureCompanyRole(req.user.uid);
+      companyData.role = 'company';
+    }
+
+    // Transform company data for frontend
+    const company = {
+      companyName: companyData.name || companyData.companyName || '',
+      description: companyData.description || '',
+      industry: companyData.industry || '',
+      contactInfo: {
+        email: companyData.contactEmail || companyData.email || '',
+        phone: companyData.contactPhone || ''
+      },
+      address: companyData.location || companyData.address || '',
+      logoUrl: companyData.logoUrl || '',
+      website: companyData.website || '',
+      slogan: companyData.slogan || '',
+      approved: companyData.approved !== false,
+      role: companyData.role || 'company'
+    };
 
     // Get company jobs
     const jobsSnapshot = await db.collection('jobs')
@@ -449,10 +572,7 @@ const getCompanyDashboard = async (req, res) => {
       }));
 
     res.json({
-      company: {
-        ...company,
-        approved: company.approved !== false
-      },
+      company: company,
       stats,
       recentCandidates
     });
@@ -466,6 +586,22 @@ const updateApplicationStatus = async (req, res) => {
   try {
     const { applicationId } = req.params;
     const { status, notes } = req.body;
+
+    console.log(`Updating application status: ${applicationId}, company: ${req.user.uid}`);
+
+    // Verify the application exists and belongs to company's job
+    const applicationDoc = await db.collection('jobApplications').doc(applicationId).get();
+    if (!applicationDoc.exists) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+
+    const application = applicationDoc.data();
+    
+    // Verify the job belongs to this company
+    const jobDoc = await db.collection('jobs').doc(application.jobId).get();
+    if (!jobDoc.exists || jobDoc.data().companyId !== req.user.uid) {
+      return res.status(403).json({ error: 'Access denied. This application does not belong to your company.' });
+    }
 
     await db.collection('jobApplications').doc(applicationId).update({
       status,
@@ -564,5 +700,6 @@ module.exports = {
   getQualifiedApplicants,
   getInterviewReadyCandidates,
   getCompanyDashboard,
-  updateApplicationStatus
+  updateApplicationStatus,
+  ensureCompanyRole
 };

@@ -1,199 +1,301 @@
-// src/context/AuthContext.js
-import React, { createContext, useState, useEffect, useContext } from 'react';
+import React, { createContext, useState, useContext, useEffect } from 'react';
 import { 
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
-  sendEmailVerification,
   onAuthStateChanged,
   updateProfile
 } from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 
 const AuthContext = createContext();
 
 export function useAuth() {
-  return useContext(AuthContext);
+  const context = useContext(AuthContext);
+  if (!context) throw new Error('useAuth must be used within an AuthProvider');
+  return context;
 }
 
 export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  // Register new user with email verification
+  const clearError = () => setError('');
+
+  // --- Helper to get collection by role ---
+  const getCollectionByRole = (role) => {
+    switch (role) {
+      case 'student':
+      case 'admin':
+        return 'users';
+      case 'institution':
+        return 'institutions';
+      case 'company':
+        return 'companies';
+      default:
+        return 'users';
+    }
+  };
+
+  // --- Register function ---
   async function register(userData) {
     try {
-      // Create user with email and password
-      const userCredential = await createUserWithEmailAndPassword(
+      clearError();
+      setAuthLoading(true);
+
+      console.log('Starting registration for:', userData.email, 'Role:', userData.role);
+
+      const { user } = await createUserWithEmailAndPassword(
         auth, 
         userData.email, 
         userData.password
       );
-      
-      const user = userCredential.user;
 
-      // Send email verification immediately after registration
-      await sendEmailVerification(user);
-      
-      // Update user profile with display name
-      if (userData.firstName && userData.lastName) {
-        await updateProfile(user, {
-          displayName: `${userData.firstName} ${userData.lastName}`
-        });
-      } else if (userData.organizationName) {
-        await updateProfile(user, {
-          displayName: userData.organizationName
-        });
-      }
+      console.log('Firebase user created:', user.uid);
 
-      // Prepare user data for Firestore
-      const userProfileData = {
+      // Prepare profile data
+      let profileData = {
         uid: user.uid,
         email: userData.email,
-        emailVerified: false,
         role: userData.role,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
 
-      // Add role-specific data
+      // Add role-specific fields
       if (userData.role === 'student' || userData.role === 'admin') {
-        userProfileData.firstName = userData.firstName;
-        userProfileData.lastName = userData.lastName;
+        profileData.firstName = userData.firstName;
+        profileData.lastName = userData.lastName;
+        if (userData.role === 'student') {
+          profileData.dateOfBirth = userData.dateOfBirth;
+          profileData.phone = userData.phone;
+          profileData.highSchool = userData.highSchool;
+          profileData.graduationYear = userData.graduationYear;
+        }
+      } else if (userData.role === 'institution' || userData.role === 'company') {
+        profileData.name = userData.organizationName;
+        profileData.contactEmail = userData.contactEmail;
+        profileData.contactPhone = userData.contactPhone;
+        profileData.location = userData.location;
+        profileData.slogan = userData.slogan;
+        profileData.description = userData.description;
+        
+        // Add approval status for companies/institutions
+        profileData.approved = false;
       }
 
-      if (userData.role === 'student') {
-        userProfileData.dateOfBirth = userData.dateOfBirth;
-        userProfileData.phone = userData.phone;
-        userProfileData.highSchool = userData.highSchool;
-        userProfileData.graduationYear = userData.graduationYear;
-      }
+      // Update displayName in Firebase Auth
+      const displayName = userData.role === 'student' || userData.role === 'admin'
+        ? `${userData.firstName} ${userData.lastName}`
+        : userData.organizationName;
 
-      if (userData.role === 'institution' || userData.role === 'company') {
-        userProfileData.organizationName = userData.organizationName;
-        userProfileData.contactPhone = userData.contactPhone;
-        userProfileData.contactEmail = userData.contactEmail;
-        userProfileData.location = userData.location;
-        userProfileData.slogan = userData.slogan;
-        userProfileData.description = userData.description;
-      }
+      await updateProfile(user, { displayName });
+      console.log('Firebase profile updated with displayName:', displayName);
 
-      // Save user profile to Firestore
-      await setDoc(doc(db, 'users', user.uid), userProfileData);
+      // Save to the correct collection
+      const collectionName = getCollectionByRole(userData.role);
+      console.log('Saving to collection:', collectionName);
+      
+      await setDoc(doc(db, collectionName, user.uid), profileData);
+      console.log('Profile saved to Firestore');
 
-      // IMPORTANT: Sign out the user immediately after registration
-      // This prevents auto-login and forces them to verify email first
-      await signOut(auth);
-
+      setUserProfile(profileData);
       return user;
     } catch (error) {
-      // If there's an error, make sure to sign out
-      await signOut(auth);
-      throw error;
+      console.error('Registration error:', error);
+      const errorMessage = getFirebaseErrorMessage(error.code);
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    } finally {
+      setAuthLoading(false);
     }
   }
 
-  // Login user with email verification check
+  // --- Login function ---
   async function login(email, password) {
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-      
-      // Reload user to get the latest email verification status
-      await user.reload();
-      const updatedUser = auth.currentUser;
-      
-      // Check if email is verified
-      if (!updatedUser.emailVerified) {
-        await signOut(auth);
-        throw new Error('Please verify your email before logging in. Check your inbox for the verification link. If you didn\'t receive it, you can request a new one.');
+      clearError();
+      setAuthLoading(true);
+
+      console.log('Attempting login for:', email);
+
+      const { user } = await signInWithEmailAndPassword(auth, email, password);
+      console.log('Login successful, user UID:', user.uid);
+
+      // Fetch profile from all possible collections
+      const profile = await fetchUserProfile(user.uid);
+      console.log('Fetched user profile:', profile);
+
+      if (profile) {
+        setUserProfile(profile);
+        
+        // Store role and profile in localStorage for API middleware
+        localStorage.setItem('userRole', profile.role);
+        localStorage.setItem('userProfile', JSON.stringify(profile));
+        console.log('Stored user role in localStorage:', profile.role);
+      } else {
+        console.warn('No profile found for user:', user.uid);
       }
-      
-      return updatedUser;
+
+      return { user, profile };
     } catch (error) {
-      throw error;
+      console.error('Login error:', error);
+      const errorMessage = getFirebaseErrorMessage(error.code);
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    } finally {
+      setAuthLoading(false);
     }
   }
 
-  // Send verification email
-  async function sendVerificationEmail() {
-    try {
-      if (currentUser) {
-        await sendEmailVerification(currentUser);
-        return true;
-      }
-      return false;
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  // Check email verification status
-  async function checkEmailVerification() {
-    try {
-      if (!currentUser) {
-        throw new Error('No user is currently signed in');
-      }
-      await currentUser.reload();
-      return currentUser.emailVerified;
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  // Resend verification email for unauthenticated users
-  async function resendVerificationEmail(email) {
-    try {
-      // This would require a custom backend function since we can't send verification
-      // without the user being signed in. For now, we'll throw an error.
-      throw new Error('Please try to login first, then use the "Resend Verification" option from the login page.');
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  // Logout user
+  // --- Logout ---
   async function logout() {
     try {
+      clearError();
+      console.log('Logging out user');
       await signOut(auth);
+      setUserProfile(null);
+      // Clear stored data
+      localStorage.removeItem('userRole');
+      localStorage.removeItem('userProfile');
+      localStorage.removeItem('token');
+      console.log('Logout successful');
     } catch (error) {
-      throw error;
+      console.error('Logout error:', error);
+      const errorMessage = getFirebaseErrorMessage(error.code);
+      setError(errorMessage);
+      throw new Error(errorMessage);
     }
   }
 
-  // Load user profile from Firestore
-  async function loadUserProfile(uid) {
+  // --- Update Profile ---
+  async function updateUserProfile(uid, updates, role) {
     try {
-      const userDoc = await getDoc(doc(db, 'users', uid));
+      clearError();
+      console.log('Updating profile for:', uid, 'Role:', role, 'Updates:', updates);
+      
+      const collectionName = getCollectionByRole(role);
+      await updateDoc(doc(db, collectionName, uid), {
+        ...updates,
+        updatedAt: new Date().toISOString()
+      });
+
+      const userDoc = await getDoc(doc(db, collectionName, uid));
       if (userDoc.exists()) {
-        setUserProfile(userDoc.data());
+        const updatedProfile = userDoc.data();
+        setUserProfile(updatedProfile);
+        
+        // Update localStorage
+        localStorage.setItem('userProfile', JSON.stringify(updatedProfile));
+        
+        console.log('Profile updated successfully');
+        return updatedProfile;
       }
     } catch (error) {
-      console.error('Error loading user profile:', error);
+      console.error('Update profile error:', error);
+      const errorMessage = getFirebaseErrorMessage(error.code);
+      setError(errorMessage);
+      throw new Error(errorMessage);
     }
   }
 
+  // --- Fetch Profile ---
+  async function fetchUserProfile(uid) {
+    const collections = ['users', 'institutions', 'companies'];
+    console.log('Fetching profile for UID:', uid);
+    
+    try {
+      for (let collection of collections) {
+        const userDoc = await getDoc(doc(db, collection, uid));
+        if (userDoc.exists()) {
+          console.log(`✅ Found profile in ${collection} collection:`, userDoc.data());
+          return userDoc.data();
+        }
+      }
+      console.log('❌ No profile found in any collection');
+      return null;
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+      return null;
+    }
+  }
+
+  // --- Refresh User Profile ---
+  async function refreshUserProfile() {
+    if (currentUser) {
+      console.log('Refreshing user profile');
+      const profile = await fetchUserProfile(currentUser.uid);
+      setUserProfile(profile);
+      
+      // Update localStorage
+      if (profile) {
+        localStorage.setItem('userProfile', JSON.stringify(profile));
+        localStorage.setItem('userRole', profile.role);
+      }
+      
+      return profile;
+    }
+    return null;
+  }
+
+  // --- Firebase Auth Error Messages ---
+  function getFirebaseErrorMessage(errorCode) {
+    switch (errorCode) {
+      case 'auth/email-already-in-use':
+        return 'This email is already registered. Please use a different email or login.';
+      case 'auth/invalid-email':
+        return 'The email address is not valid.';
+      case 'auth/operation-not-allowed':
+        return 'Email/password accounts are not enabled. Please contact support.';
+      case 'auth/weak-password':
+        return 'The password is too weak. Please choose a stronger password.';
+      case 'auth/user-disabled':
+        return 'This account has been disabled. Please contact support.';
+      case 'auth/user-not-found':
+        return 'No account found with this email address.';
+      case 'auth/wrong-password':
+        return 'Incorrect password. Please try again.';
+      case 'auth/too-many-requests':
+        return 'Too many unsuccessful login attempts. Please try again later.';
+      default:
+        return 'An unexpected error occurred. Please try again.';
+    }
+  }
+
+  // --- onAuthStateChanged listener ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setCurrentUser(user);
-      
-      if (user) {
-        await loadUserProfile(user.uid);
+      try {
+        console.log('Auth state changed, user:', user ? user.uid : 'null');
+        setCurrentUser(user);
         
-        // Update email verification status in Firestore if needed
-        if (user.emailVerified) {
-          await setDoc(doc(db, 'users', user.uid), {
-            emailVerified: true,
-            updatedAt: new Date().toISOString()
-          }, { merge: true });
+        if (user) {
+          const profile = await fetchUserProfile(user.uid);
+          setUserProfile(profile);
+          
+          if (profile) {
+            // Store role for API middleware
+            localStorage.setItem('userRole', profile.role);
+            localStorage.setItem('userProfile', JSON.stringify(profile));
+            console.log('User authenticated with role:', profile.role);
+          }
+        } else {
+          setUserProfile(null);
+          localStorage.removeItem('userRole');
+          localStorage.removeItem('userProfile');
+          localStorage.removeItem('token');
+          console.log('User signed out');
         }
-      } else {
-        setUserProfile(null);
+      } catch (error) {
+        console.error('Error in auth state change:', error);
+        setError('Failed to load user profile.');
+      } finally {
+        setLoading(false);
       }
-      
-      setLoading(false);
     });
 
     return unsubscribe;
@@ -202,23 +304,17 @@ export function AuthProvider({ children }) {
   const value = {
     currentUser,
     userProfile,
+    error,
+    loading: loading || authLoading,
+    authLoading,
     register,
     login,
     logout,
-    sendVerificationEmail,
-    checkEmailVerification,
-    resendVerificationEmail,
-    isAuthenticated: !!currentUser,
-    userRole: userProfile?.role,
-    isAdmin: userProfile?.role === 'admin',
-    isInstitution: userProfile?.role === 'institution',
-    isCompany: userProfile?.role === 'company',
-    isStudent: userProfile?.role === 'student'
+    updateUserProfile,
+    fetchUserProfile,
+    refreshUserProfile,
+    clearError
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {!loading && children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

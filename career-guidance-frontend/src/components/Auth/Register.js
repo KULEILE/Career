@@ -1,4 +1,3 @@
-// src/components/Auth/Register.js
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -26,7 +25,6 @@ const Register = () => {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
   const navigate = useNavigate();
 
@@ -36,7 +34,6 @@ const Register = () => {
     }
   }, [currentUser, navigate]);
 
-  // Validation functions
   const validateName = (name) => {
     const nameRegex = /^[A-Za-z\s'-]+$/;
     return nameRegex.test(name) && name.length >= 2;
@@ -95,7 +92,6 @@ const Register = () => {
     return validAdminCodes.includes(code);
   };
 
-  // Real-time validation handlers
   const handleNameChange = (e) => {
     const { name, value } = e.target;
     const filteredValue = value.replace(/[^A-Za-z\s'-]/g, '');
@@ -519,7 +515,6 @@ const Register = () => {
     e.preventDefault();
     setLoading(true);
     setError('');
-    setSuccess('');
 
     if (!validateForm()) {
       setLoading(false);
@@ -536,30 +531,19 @@ const Register = () => {
 
       await register(registrationData);
       
-      // Show success message instead of redirecting
-      setSuccess('Registration successful! Please check your email for the verification link. You must verify your email before you can login.');
-      
-      // Clear form
-      setFormData({
-        email: '',
-        password: '',
-        confirmPassword: '',
-        firstName: '',
-        lastName: '',
-        role: 'student',
-        organizationName: '',
-        dateOfBirth: '',
-        phone: '',
-        highSchool: '',
-        graduationYear: '',
-        contactPhone: '',
-        contactEmail: '',
-        location: '',
-        slogan: '',
-        description: '',
-        adminCode: ''
-      });
-
+      switch (formData.role) {
+        case 'institution':
+          navigate('/institution/dashboard');
+          break;
+        case 'company':
+          navigate('/company/dashboard');
+          break;
+        case 'admin':
+          navigate('/admin/dashboard');
+          break;
+        default:
+          navigate('/student/dashboard');
+      }
     } catch (error) {
       setError(error.message);
     } finally {
@@ -578,7 +562,6 @@ const Register = () => {
         </div>
         <form onSubmit={handleSubmit}>
           {error && <div className="alert alert-error">{error}</div>}
-          {success && <div className="alert alert-success">{success}</div>}
           
           {showPersonalNameFields && (
             <div className="row">
