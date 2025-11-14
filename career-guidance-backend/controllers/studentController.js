@@ -113,7 +113,9 @@ const getStudentApplications = async (req, res) => {
     for (const doc of applicationsSnapshot.docs) {
       const application = doc.data();
       const courseDoc = await db.collection('courses').doc(application.courseId).get();
-      const institutionDoc = await db.collection('users').doc(application.institutionId).get();
+      
+      // FIXED: Query the institutions collection instead of users
+      const institutionDoc = await db.collection('institutions').doc(application.institutionId).get();
       
       applications.push({
         id: doc.id,
@@ -549,7 +551,9 @@ const getAdmissions = async (req, res) => {
     for (const doc of admissionsSnapshot.docs) {
       const application = doc.data();
       const courseDoc = await db.collection('courses').doc(application.courseId).get();
-      const institutionDoc = await db.collection('users').doc(application.institutionId).get();
+      
+      // FIXED: Query the institutions collection instead of users
+      const institutionDoc = await db.collection('institutions').doc(application.institutionId).get();
       
       admissions.push({
         id: doc.id,
@@ -1282,7 +1286,7 @@ const promoteWaitlistedStudent = async (courseId, institutionId) => {
       });
 
       const courseDoc = await db.collection('courses').doc(courseId).get();
-      const institutionDoc = await db.collection('users').doc(institutionId).get();
+      const institutionDoc = await db.collection('institutions').doc(institutionId).get();
       
       await NotificationService.createNotification(
         nextStudent.data().studentId,

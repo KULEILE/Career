@@ -4,7 +4,7 @@ const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 15000,
+  timeout: 30000, // Increased from 15000 to 30000 (30 seconds)
 });
 
 api.interceptors.request.use(
@@ -143,6 +143,11 @@ export const rejectDocument = (documentId, data) => api.put(`/admin/documents/${
 // -------------------- Admin User Management API --------------------
 export const updateUser = (userId, userData) => api.put(`/admin/users/${userId}`, userData);
 export const deleteUser = (userId) => api.delete(`/admin/users/${userId}`);
+
+// -------------------- Admin Transcript Verification API --------------------
+export const getPendingTranscripts = () => api.get('/admin/transcripts/pending');
+export const approveTranscript = (uid) => api.put(`/admin/transcripts/${uid}/approve`);
+export const rejectTranscript = (uid, reason) => api.put(`/admin/transcripts/${uid}/reject`, { reason });
 
 // -------------------- Public API --------------------
 export const getAllCourses = () => api.get('/courses');

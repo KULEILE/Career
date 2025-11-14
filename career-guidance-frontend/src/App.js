@@ -43,7 +43,7 @@ import AdminInstitutions from './components/Admin/Institutions';
 import AdminCompanies from './components/Admin/Companies';
 import AdminUsers from './components/Admin/Users';
 import AdminReports from './components/Admin/Reports';
-
+import TranscriptVerification from './components/Admin/TranscriptVerification';
 import './styles/App.css';
 
 function App() {
@@ -95,6 +95,7 @@ function App() {
               <Route path="/admin/companies" element={<AdminCompanies />} />
               <Route path="/admin/users" element={<AdminUsers />} />
               <Route path="/admin/reports" element={<AdminReports />} />
+              <Route path="/admin/transcripts" element={<TranscriptVerification />} />
               
               {/* Fallback route */}
               <Route path="*" element={<Landing />} />

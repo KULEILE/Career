@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getAdminDashboard, getInstitutions, getCompanies, getUsers } from '../../services/api';
+import { getAdminDashboard, getInstitutions, getCompanies, getUsers, getPendingTranscripts } from '../../services/api';
 import Loading from '../Common/Loading';
 
 const AdminDashboard = () => {
@@ -8,6 +8,7 @@ const AdminDashboard = () => {
   const [institutions, setInstitutions] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [users, setUsers] = useState([]);
+  const [pendingTranscriptsCount, setPendingTranscriptsCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -16,11 +17,12 @@ const AdminDashboard = () => {
 
   const fetchDashboardData = async () => {
     try {
-      const [statsResponse, institutionsResponse, companiesResponse, usersResponse] = await Promise.all([
+      const [statsResponse, institutionsResponse, companiesResponse, usersResponse, transcriptsResponse] = await Promise.all([
         getAdminDashboard().catch(() => ({ data: { stats: null } })),
         getInstitutions().catch(() => ({ data: { institutions: [] } })),
         getCompanies().catch(() => ({ data: { companies: [] } })),
-        getUsers().catch(() => ({ data: { users: [] } }))
+        getUsers().catch(() => ({ data: { users: [] } })),
+        getPendingTranscripts().catch(() => ({ data: { pendingTranscripts: [] } }))
       ]);
 
       setStats(statsResponse?.data?.stats || {
@@ -32,9 +34,9 @@ const AdminDashboard = () => {
       setInstitutions(institutionsResponse?.data?.institutions || []);
       setCompanies(companiesResponse?.data?.companies || []);
       setUsers(usersResponse?.data?.users || []);
+      setPendingTranscriptsCount(transcriptsResponse?.data?.pendingTranscripts?.length || 0);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
-      // Set fallback data
       setStats({
         totalStudents: 0,
         totalInstitutions: 0,
@@ -44,6 +46,7 @@ const AdminDashboard = () => {
       setInstitutions([]);
       setCompanies([]);
       setUsers([]);
+      setPendingTranscriptsCount(0);
     } finally {
       setLoading(false);
     }
@@ -94,12 +97,12 @@ const AdminDashboard = () => {
       )}
 
       {/* Pending Approvals */}
-      {(pendingCompanies > 0 || pendingInstitutions > 0) && (
+      {(pendingCompanies > 0 || pendingInstitutions > 0 || pendingTranscriptsCount > 0) && (
         <div className="card" style={{ marginTop: '2rem', borderLeft: '4px solid #ffc107' }}>
           <h3>Pending Approvals</h3>
           <div className="row">
             {pendingInstitutions > 0 && (
-              <div className="col-6">
+              <div className="col-4">
                 <div className="alert alert-warning">
                   <strong>{pendingInstitutions} Institutions</strong> waiting for approval
                   <br />
@@ -110,12 +113,23 @@ const AdminDashboard = () => {
               </div>
             )}
             {pendingCompanies > 0 && (
-              <div className="col-6">
+              <div className="col-4">
                 <div className="alert alert-warning">
                   <strong>{pendingCompanies} Companies</strong> waiting for approval
                   <br />
                   <Link to="/admin/companies" className="btn btn-warning btn-sm" style={{ marginTop: '0.5rem' }}>
                     Review Companies
+                  </Link>
+                </div>
+              </div>
+            )}
+            {pendingTranscriptsCount > 0 && (
+              <div className="col-4">
+                <div className="alert alert-warning">
+                  <strong>{pendingTranscriptsCount} Transcripts</strong> waiting for verification
+                  <br />
+                  <Link to="/admin/transcripts" className="btn btn-warning btn-sm" style={{ marginTop: '0.5rem' }}>
+                    Review Transcripts
                   </Link>
                 </div>
               </div>
@@ -157,10 +171,10 @@ const AdminDashboard = () => {
           </div>
           <div className="col-3">
             <div className="card" style={{ textAlign: 'center' }}>
-              <h4>Reports</h4>
-              <p>View system reports and analytics</p>
-              <Link to="/admin/reports" className="btn btn-primary">
-                View Reports
+              <h4>Verify Transcripts</h4>
+              <p>Approve or reject student transcripts</p>
+              <Link to="/admin/transcripts" className="btn btn-primary">
+                Manage
               </Link>
             </div>
           </div>

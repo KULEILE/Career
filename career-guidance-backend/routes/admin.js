@@ -15,6 +15,9 @@ const {
 } = require('../controllers/adminController');
 const { authenticate, requireRole } = require('../middleware/auth');
 
+// Import transcript routes
+const transcriptsRoutes = require('./transcripts');
+
 // Apply authentication and admin role check to all routes
 router.use(authenticate, requireRole(['admin']));
 
@@ -38,5 +41,8 @@ router.delete('/users/:userId', deleteUser);
 
 // Reports
 router.get('/reports', getReports);
+
+// Transcript Verification
+router.use('/transcripts', transcriptsRoutes);
 
 module.exports = router;
