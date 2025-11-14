@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, limit, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import Loading from '../Common/Loading';
 
@@ -23,10 +23,47 @@ const StudentDashboard = () => {
           orderBy('appliedAt', 'desc')
         );
         const applicationsSnapshot = await getDocs(applicationsQuery);
-        const applications = applicationsSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
+        
+        // Fetch course and institution details for each application
+        const applications = await Promise.all(
+          applicationsSnapshot.docs.map(async (docSnapshot) => {
+            const application = docSnapshot.data();
+            
+            let courseName = application.courseName;
+            let institutionName = application.institutionName;
+            
+            // If course name is not stored in application, fetch from courses collection
+            if (!courseName && application.courseId) {
+              try {
+                const courseDoc = await getDoc(doc(db, 'courses', application.courseId));
+                if (courseDoc.exists()) {
+                  courseName = courseDoc.data().name;
+                }
+              } catch (error) {
+                console.error('Error fetching course:', error);
+              }
+            }
+            
+            // If institution name is not stored in application, fetch from institutions collection
+            if (!institutionName && application.institutionId) {
+              try {
+                const institutionDoc = await getDoc(doc(db, 'institutions', application.institutionId));
+                if (institutionDoc.exists()) {
+                  institutionName = institutionDoc.data().institutionName;
+                }
+              } catch (error) {
+                console.error('Error fetching institution:', error);
+              }
+            }
+            
+            return {
+              id: docSnapshot.id,
+              ...application,
+              courseName: courseName || 'Unknown Course',
+              institutionName: institutionName || 'Unknown Institution'
+            };
+          })
+        );
 
         // FIXED: Simplified jobs query to avoid index issues
         const jobsQuery = query(
