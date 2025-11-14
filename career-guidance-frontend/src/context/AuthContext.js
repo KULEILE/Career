@@ -1,185 +1,213 @@
+// src/context/AuthContext.js
 import React, { createContext, useState, useEffect, useContext } from 'react';
-import { auth } from '../services/firebase';
 import { 
-  onAuthStateChanged, 
-  signOut, 
-  signInWithCustomToken 
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  sendEmailVerification,
+  onAuthStateChanged,
+  updateProfile
 } from 'firebase/auth';
-import { registerUser, loginUser, getUserProfile } from '../services/api';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../services/firebase';
 
 const AuthContext = createContext();
 
-export const useAuth = () => useContext(AuthContext);
+export function useAuth() {
+  return useContext(AuthContext);
+}
 
-export const AuthProvider = ({ children }) => {
+export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // --------------------------
-  // REGISTER FUNCTION
-  // --------------------------
-  const register = async (formData) => {
+  // Register new user with email verification
+  async function register(userData) {
     try {
-      if (formData.role === 'admin' && !formData.adminSecret) {
-        throw new Error('Admin secret is required for admin registration');
+      // Create user with email and password
+      const userCredential = await createUserWithEmailAndPassword(
+        auth, 
+        userData.email, 
+        userData.password
+      );
+      
+      const user = userCredential.user;
+
+      // Send email verification immediately after registration
+      await sendEmailVerification(user);
+      
+      // Update user profile with display name
+      if (userData.firstName && userData.lastName) {
+        await updateProfile(user, {
+          displayName: `${userData.firstName} ${userData.lastName}`
+        });
+      } else if (userData.organizationName) {
+        await updateProfile(user, {
+          displayName: userData.organizationName
+        });
       }
 
-      const response = await registerUser(formData);
+      // Prepare user data for Firestore
+      const userProfileData = {
+        uid: user.uid,
+        email: userData.email,
+        emailVerified: false,
+        role: userData.role,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
 
-      if (response.data.token) {
-        const userCredential = await signInWithCustomToken(auth, response.data.token);
-        setCurrentUser(userCredential.user);
-
-        const profile = await fetchUserProfile(userCredential.user);
-        setUserProfile(profile || response.data.user);
+      // Add role-specific data
+      if (userData.role === 'student' || userData.role === 'admin') {
+        userProfileData.firstName = userData.firstName;
+        userProfileData.lastName = userData.lastName;
       }
 
-      return response.data;
+      if (userData.role === 'student') {
+        userProfileData.dateOfBirth = userData.dateOfBirth;
+        userProfileData.phone = userData.phone;
+        userProfileData.highSchool = userData.highSchool;
+        userProfileData.graduationYear = userData.graduationYear;
+      }
+
+      if (userData.role === 'institution' || userData.role === 'company') {
+        userProfileData.organizationName = userData.organizationName;
+        userProfileData.contactPhone = userData.contactPhone;
+        userProfileData.contactEmail = userData.contactEmail;
+        userProfileData.location = userData.location;
+        userProfileData.slogan = userData.slogan;
+        userProfileData.description = userData.description;
+      }
+
+      // Save user profile to Firestore
+      await setDoc(doc(db, 'users', user.uid), userProfileData);
+
+      // IMPORTANT: Sign out the user immediately after registration
+      // This prevents auto-login and forces them to verify email first
+      await signOut(auth);
+
+      return user;
     } catch (error) {
-      console.error('Registration error:', error.response?.data || error.message || error);
-      throw new Error(error.response?.data?.error || error.message || 'Registration failed');
+      // If there's an error, make sure to sign out
+      await signOut(auth);
+      throw error;
     }
-  };
+  }
 
-  // --------------------------
-  // LOGIN FUNCTION
-  // --------------------------
-  const login = async (email, password) => {
+  // Login user with email verification check
+  async function login(email, password) {
     try {
-      const response = await loginUser({ email, password });
-
-      if (response.data.token) {
-        const userCredential = await signInWithCustomToken(auth, response.data.token);
-        setCurrentUser(userCredential.user);
-
-        const profile = await fetchUserProfile(userCredential.user);
-        setUserProfile(profile || response.data.user);
-
-        const token = await userCredential.user.getIdToken();
-        localStorage.setItem('token', token);
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+      
+      // Reload user to get the latest email verification status
+      await user.reload();
+      const updatedUser = auth.currentUser;
+      
+      // Check if email is verified
+      if (!updatedUser.emailVerified) {
+        await signOut(auth);
+        throw new Error('Please verify your email before logging in. Check your inbox for the verification link. If you didn\'t receive it, you can request a new one.');
       }
-
-      return response.data;
+      
+      return updatedUser;
     } catch (error) {
-      console.error('Login error:', error.response?.data || error.message || error);
-      throw new Error(error.response?.data?.error || error.message || 'Login failed');
+      throw error;
     }
-  };
+  }
 
-  // --------------------------
-  // LOGOUT FUNCTION
-  // --------------------------
-  const logout = async () => {
+  // Send verification email
+  async function sendVerificationEmail() {
+    try {
+      if (currentUser) {
+        await sendEmailVerification(currentUser);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Check email verification status
+  async function checkEmailVerification() {
+    try {
+      if (!currentUser) {
+        throw new Error('No user is currently signed in');
+      }
+      await currentUser.reload();
+      return currentUser.emailVerified;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Resend verification email for unauthenticated users
+  async function resendVerificationEmail(email) {
+    try {
+      // This would require a custom backend function since we can't send verification
+      // without the user being signed in. For now, we'll throw an error.
+      throw new Error('Please try to login first, then use the "Resend Verification" option from the login page.');
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Logout user
+  async function logout() {
     try {
       await signOut(auth);
-      setCurrentUser(null);
-      setUserProfile(null);
-      localStorage.removeItem('token');
     } catch (error) {
-      console.error('Logout error:', error);
       throw error;
     }
-  };
+  }
 
-  // --------------------------
-  // FETCH USER PROFILE
-  // --------------------------
-  const fetchUserProfile = async (user = auth.currentUser) => {
-    if (!user) return null;
+  // Load user profile from Firestore
+  async function loadUserProfile(uid) {
     try {
-      const token = await user.getIdToken();
-      if (!token) return null;
-
-      const response = await getUserProfile(token);
-
-      if (response.data && response.data.user) {
-        return response.data.user;
+      const userDoc = await getDoc(doc(db, 'users', uid));
+      if (userDoc.exists()) {
+        setUserProfile(userDoc.data());
       }
-      return null;
     } catch (error) {
-      if (error.response) {
-        console.error('Server error fetching profile:', {
-          status: error.response.status,
-          data: error.response.data,
-        });
-      } else if (error.request) {
-        console.error('Network error fetching profile - no response received:', error.request);
-      } else {
-        console.error('Error setting up profile request:', error.message);
-      }
-      return null;
+      console.error('Error loading user profile:', error);
     }
-  };
+  }
 
-  // --------------------------
-  // UPDATE USER PROFILE
-  // --------------------------
-  const updateUserProfile = async (updates) => {
-    try {
-      setUserProfile(prev => ({ ...prev, ...updates }));
-    } catch (error) {
-      console.error('Error updating profile:', error);
-      throw error;
-    }
-  };
-
-  // --------------------------
-  // AUTH STATE LISTENER
-  // --------------------------
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setCurrentUser(user);
+      
       if (user) {
-        setCurrentUser(user);
-        const profile = await fetchUserProfile(user);
-        setUserProfile(profile || {
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName || '',
-          role: 'unknown'
-        });
-
-        const token = await user.getIdToken();
-        localStorage.setItem('token', token);
+        await loadUserProfile(user.uid);
+        
+        // Update email verification status in Firestore if needed
+        if (user.emailVerified) {
+          await setDoc(doc(db, 'users', user.uid), {
+            emailVerified: true,
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+        }
       } else {
-        setCurrentUser(null);
         setUserProfile(null);
-        localStorage.removeItem('token');
       }
+      
       setLoading(false);
     });
 
     return unsubscribe;
   }, []);
 
-  // --------------------------
-  // REFRESH USER PROFILE
-  // --------------------------
-  const refreshUserProfile = async () => {
-    if (!currentUser) return null;
-    try {
-      const profile = await fetchUserProfile();
-      if (profile) setUserProfile(profile);
-      return profile;
-    } catch (error) {
-      console.error('Error refreshing user profile:', error);
-      return null;
-    }
-  };
-
-  // --------------------------
-  // CONTEXT VALUE
-  // --------------------------
   const value = {
     currentUser,
     userProfile,
-    loading,
     register,
     login,
     logout,
-    updateUserProfile,
-    fetchUserProfile: refreshUserProfile,
-    refreshUserProfile,
+    sendVerificationEmail,
+    checkEmailVerification,
+    resendVerificationEmail,
     isAuthenticated: !!currentUser,
     userRole: userProfile?.role,
     isAdmin: userProfile?.role === 'admin',
@@ -193,4 +221,4 @@ export const AuthProvider = ({ children }) => {
       {!loading && children}
     </AuthContext.Provider>
   );
-};
+}

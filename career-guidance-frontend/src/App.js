@@ -1,3 +1,4 @@
+// src/App.js
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
@@ -5,10 +6,12 @@ import Navbar from './components/Common/Navbar';
 import Footer from './components/Common/Footer';
 import Login from './components/Auth/Login';
 import Register from './components/Auth/Register';
+import VerifyEmail from './components/Auth/VerifyEmail';
 import Landing from './components/Guest/Landing';
 import EligibilityChecker from './components/Guest/EligibilityChecker';
 import InstitutionBrowser from './components/Guest/InstitutionBrowser';
 import GuestCourseBrowser from './components/Guest/CourseBrowser';
+import EmailVerificationHandler from './components/Auth/EmailVerificationHandler';
 
 // Student Components
 import StudentDashboard from './components/Student/Dashboard';
@@ -58,6 +61,7 @@ function App() {
               <Route path="/" element={<Landing />} />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
+              <Route path="/verify-email" element={<VerifyEmail />} />
               <Route path="/eligibility-check" element={<EligibilityChecker />} />
               <Route path="/institutions" element={<InstitutionBrowser />} />
               <Route path="/courses" element={<GuestCourseBrowser />} />
@@ -71,7 +75,8 @@ function App() {
               <Route path="/student/admissions" element={<Admissions />} />
               <Route path="/student/jobs" element={<JobPortal />} />
               <Route path="/student/documents" element={<Transcripts />} />
-              
+              <Route path="/verify-email" element={<EmailVerificationHandler />} />
+
               {/* Institution Routes */}
               <Route path="/institution/dashboard" element={<InstitutionDashboard />} />
               <Route path="/institution/profile" element={<InstitutionProfile />} />

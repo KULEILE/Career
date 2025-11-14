@@ -1,3 +1,4 @@
+// src/components/Auth/Register.js
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -11,24 +12,21 @@ const Register = () => {
     firstName: '',
     lastName: '',
     role: 'student',
-    // Single name field for institutions and companies
     organizationName: '',
-    // Student-specific fields
     dateOfBirth: '',
     phone: '',
     highSchool: '',
     graduationYear: '',
-    // Institution/Company contact requirements
     contactPhone: '',
     contactEmail: '',
     location: '',
     slogan: '',
     description: '',
-    // Admin-specific fields
     adminCode: ''
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
   const navigate = useNavigate();
 
@@ -59,7 +57,6 @@ const Register = () => {
   };
 
   const validatePhone = (phone) => {
-    // Enhanced phone validation - allows any numeric format with optional +, spaces, hyphens, parentheses
     const phoneRegex = /^[\+]?[0-9\s\-\(\)]{8,20}$/;
     const cleanPhone = phone.replace(/[\s\-\(\)]/g, '');
     return phoneRegex.test(phone) && cleanPhone.length >= 8 && cleanPhone.length <= 15;
@@ -94,7 +91,6 @@ const Register = () => {
   };
 
   const validateAdminCode = (code) => {
-    // You can change this to match your admin registration code
     const validAdminCodes = ['ADMIN123', 'SUPERADMIN2024', 'SYSTEM_ADMIN'];
     return validAdminCodes.includes(code);
   };
@@ -211,7 +207,6 @@ const Register = () => {
 
   const handlePhoneChange = (e) => {
     const { name, value } = e.target;
-    // Allow only numbers, +, spaces, hyphens, and parentheses
     const filteredValue = value.replace(/[^\d\s+\-\(\)]/g, '');
     
     setFormData(prev => ({
@@ -219,7 +214,6 @@ const Register = () => {
       [name]: filteredValue
     }));
 
-    // Real-time validation
     if (filteredValue && !validatePhone(filteredValue)) {
       setFieldErrors(prev => ({
         ...prev,
@@ -360,7 +354,6 @@ const Register = () => {
     setFormData(prev => ({
       ...prev,
       role: value,
-      // Clear role-specific fields when changing roles
       organizationName: '',
       contactPhone: '',
       contactEmail: '',
@@ -374,7 +367,6 @@ const Register = () => {
   const handleChange = (e) => {
     const { name, value } = e.target;
     
-    // Use specific handlers for certain fields
     switch (name) {
       case 'firstName':
       case 'lastName':
@@ -429,7 +421,6 @@ const Register = () => {
   const validateForm = () => {
     const errors = {};
 
-    // Basic validations - require first/last name for student and admin roles
     if (formData.role === 'student' || formData.role === 'admin') {
       if (!validateName(formData.firstName)) {
         errors.firstName = 'First name is required and can only contain letters';
@@ -452,12 +443,10 @@ const Register = () => {
       errors.confirmPassword = 'Passwords do not match';
     }
 
-    // Role-specific validations
     if ((formData.role === 'institution' || formData.role === 'company') && !formData.organizationName) {
       errors.organizationName = `${formData.role === 'institution' ? 'Institution' : 'Company'} name is required`;
     }
 
-    // Admin-specific validations
     if (formData.role === 'admin') {
       if (!formData.adminCode) {
         errors.adminCode = 'Admin registration code is required';
@@ -466,7 +455,6 @@ const Register = () => {
       }
     }
 
-    // Institution/Company contact requirements
     if (formData.role === 'institution' || formData.role === 'company') {
       if (!formData.contactPhone) {
         errors.contactPhone = 'Contact phone number is required';
@@ -499,7 +487,6 @@ const Register = () => {
       }
     }
 
-    // Student-specific validations
     if (formData.role === 'student') {
       if (!formData.dateOfBirth) {
         errors.dateOfBirth = 'Date of birth is required';
@@ -532,6 +519,7 @@ const Register = () => {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setSuccess('');
 
     if (!validateForm()) {
       setLoading(false);
@@ -540,7 +528,6 @@ const Register = () => {
     }
 
     try {
-      // Format the data properly before sending
       const registrationData = {
         ...formData,
         createdAt: new Date().toISOString(),
@@ -549,20 +536,30 @@ const Register = () => {
 
       await register(registrationData);
       
-      // Redirect based on role
-      switch (formData.role) {
-        case 'institution':
-          navigate('/institution/dashboard');
-          break;
-        case 'company':
-          navigate('/company/dashboard');
-          break;
-        case 'admin':
-          navigate('/admin/dashboard');
-          break;
-        default:
-          navigate('/student/dashboard');
-      }
+      // Show success message instead of redirecting
+      setSuccess('Registration successful! Please check your email for the verification link. You must verify your email before you can login.');
+      
+      // Clear form
+      setFormData({
+        email: '',
+        password: '',
+        confirmPassword: '',
+        firstName: '',
+        lastName: '',
+        role: 'student',
+        organizationName: '',
+        dateOfBirth: '',
+        phone: '',
+        highSchool: '',
+        graduationYear: '',
+        contactPhone: '',
+        contactEmail: '',
+        location: '',
+        slogan: '',
+        description: '',
+        adminCode: ''
+      });
+
     } catch (error) {
       setError(error.message);
     } finally {
@@ -581,8 +578,8 @@ const Register = () => {
         </div>
         <form onSubmit={handleSubmit}>
           {error && <div className="alert alert-error">{error}</div>}
+          {success && <div className="alert alert-success">{success}</div>}
           
-          {/* Show first/last name fields for student and admin roles */}
           {showPersonalNameFields && (
             <div className="row">
               <div className="col-6">
@@ -658,11 +655,9 @@ const Register = () => {
               <option value="student">Student</option>
               <option value="institution">Institution</option>
               <option value="company">Company</option>
-              
             </select>
           </div>
 
-          {/* Single organization name for both institutions and companies */}
           {(formData.role === 'institution' || formData.role === 'company') && (
             <div className="form-group">
               <label className="form-label">
@@ -686,7 +681,6 @@ const Register = () => {
             </div>
           )}
 
-          {/* Admin-specific fields */}
           {formData.role === 'admin' && (
             <div className="form-group">
               <label className="form-label">Admin Registration Code *</label>
@@ -710,7 +704,6 @@ const Register = () => {
             </div>
           )}
 
-          {/* Student-specific fields */}
           {formData.role === 'student' && (
             <>
               <div className="row">
@@ -798,7 +791,6 @@ const Register = () => {
             </>
           )}
 
-          {/* Institution/Company contact requirements */}
           {(formData.role === 'institution' || formData.role === 'company') && (
             <>
               <div className="row">
